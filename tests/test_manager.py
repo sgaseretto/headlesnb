@@ -697,3 +697,427 @@ class TestNotebookManager:
         assert "x = 42" in nb.cells[0].source
         assert "Hello, World" in nb.cells[1].source
         assert "# Test Notebook" in nb.cells[2].source
+
+    # ================== Undo/Redo Tests ==================
+
+    def test_undo_insert_cell(self, manager, sample_notebook):
+        """Test undoing a cell insertion"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_count = len(nb.cells)
+
+        # Insert a cell
+        manager.insert_cell(1, "code", "new_cell = 1")
+        assert len(nb.cells) == original_count + 1
+        assert nb.cells[1].source == "new_cell = 1"
+
+        # Undo the insertion
+        result = manager.undo()
+        assert "✓ Undid 1 operation" in result
+        assert len(nb.cells) == original_count
+        assert nb.cells[1].source != "new_cell = 1"
+
+    def test_undo_delete_cell(self, manager, sample_notebook):
+        """Test undoing a cell deletion"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_count = len(nb.cells)
+        original_source = nb.cells[1].source
+
+        # Delete a cell
+        manager.delete_cell([1])
+        assert len(nb.cells) == original_count - 1
+
+        # Undo the deletion
+        result = manager.undo()
+        assert "✓ Undid 1 operation" in result
+        assert len(nb.cells) == original_count
+        assert nb.cells[1].source == original_source
+
+    def test_undo_overwrite_cell(self, manager, sample_notebook):
+        """Test undoing a cell overwrite"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_source = nb.cells[0].source
+
+        # Overwrite a cell
+        manager.overwrite_cell_source(0, "modified = True")
+        assert nb.cells[0].source == "modified = True"
+
+        # Undo the overwrite
+        result = manager.undo()
+        assert "✓ Undid 1 operation" in result
+        assert nb.cells[0].source == original_source
+
+    def test_undo_move_cell(self, manager, sample_notebook):
+        """Test undoing a cell move"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_sources = [cell.source for cell in nb.cells]
+
+        # Move a cell
+        manager.move_cell(0, 2)
+        assert nb.cells[2].source == original_sources[0]
+
+        # Undo the move
+        result = manager.undo()
+        assert "✓ Undid 1 operation" in result
+        assert nb.cells[0].source == original_sources[0]
+        assert nb.cells[1].source == original_sources[1]
+        assert nb.cells[2].source == original_sources[2]
+
+    def test_undo_swap_cells(self, manager, sample_notebook):
+        """Test undoing a cell swap"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_sources = [cell.source for cell in nb.cells]
+
+        # Swap cells
+        manager.swap_cells(0, 2)
+        assert nb.cells[0].source == original_sources[2]
+        assert nb.cells[2].source == original_sources[0]
+
+        # Undo the swap
+        result = manager.undo()
+        assert "✓ Undid 1 operation" in result
+        assert nb.cells[0].source == original_sources[0]
+        assert nb.cells[2].source == original_sources[2]
+
+    def test_undo_reorder_cells(self, manager, sample_notebook):
+        """Test undoing a cell reorder"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_sources = [cell.source for cell in nb.cells]
+
+        # Reorder cells
+        manager.reorder_cells([2, 0, 1])
+        assert nb.cells[0].source == original_sources[2]
+
+        # Undo the reorder
+        result = manager.undo()
+        assert "✓ Undid 1 operation" in result
+        assert nb.cells[0].source == original_sources[0]
+        assert nb.cells[1].source == original_sources[1]
+        assert nb.cells[2].source == original_sources[2]
+
+    def test_undo_multiple_steps(self, manager, sample_notebook):
+        """Test undoing multiple steps"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_count = len(nb.cells)
+
+        # Perform multiple operations
+        manager.insert_cell(0, "code", "step1 = 1")
+        manager.insert_cell(1, "code", "step2 = 2")
+        manager.insert_cell(2, "code", "step3 = 3")
+        assert len(nb.cells) == original_count + 3
+
+        # Undo 3 steps
+        result = manager.undo(steps=3)
+        assert "✓ Undid 3 operation" in result
+        assert len(nb.cells) == original_count
+
+    def test_redo_after_undo(self, manager, sample_notebook):
+        """Test redoing operations after undo"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_count = len(nb.cells)
+
+        # Insert a cell
+        manager.insert_cell(0, "code", "test = 1")
+        assert len(nb.cells) == original_count + 1
+
+        # Undo
+        manager.undo()
+        assert len(nb.cells) == original_count
+
+        # Redo
+        result = manager.redo()
+        assert "✓ Redid 1 operation" in result
+        assert len(nb.cells) == original_count + 1
+        assert nb.cells[0].source == "test = 1"
+
+    def test_redo_multiple_steps(self, manager, sample_notebook):
+        """Test redoing multiple steps"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+
+        # Perform operations
+        manager.insert_cell(0, "code", "a = 1")
+        manager.insert_cell(1, "code", "b = 2")
+        manager.insert_cell(2, "code", "c = 3")
+
+        # Undo all
+        manager.undo(steps=3)
+
+        # Redo all
+        result = manager.redo(steps=3)
+        assert "✓ Redid 3 operation" in result
+        assert nb.cells[0].source == "a = 1"
+        assert nb.cells[1].source == "b = 2"
+        assert nb.cells[2].source == "c = 3"
+
+    def test_redo_cleared_by_new_operation(self, manager, sample_notebook):
+        """Test that redo stack is cleared when new operation is performed"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Insert and undo
+        manager.insert_cell(0, "code", "test = 1")
+        manager.undo()
+
+        # Perform new operation - should clear redo stack
+        manager.insert_cell(1, "code", "new = 2")
+
+        # Try to redo - should fail
+        result = manager.redo()
+        assert "Nothing to redo" in result
+
+    def test_user_scenario_complex_undo(self, manager, temp_dir):
+        """
+        Test the user's specific scenario:
+        Add 5 new cells, rearrange them 2 times, add two additional cells,
+        rearrange one more time, then undo 3 times.
+        Should undo: last rearrange + last 2 cell additions
+        """
+        # Create an empty notebook
+        nb = new_nb()
+        nb_path = temp_dir / "scenario.ipynb"
+        write_nb(nb, nb_path)
+
+        manager.use_notebook("scenario", "scenario.ipynb", mode="connect")
+        nb = manager.notebooks["scenario"].notebook
+
+        # Add 5 new cells
+        for i in range(5):
+            manager.insert_cell(i, "code", f"cell_{i} = {i}")
+        assert len(nb.cells) == 5
+
+        # Rearrange them 2 times
+        manager.reorder_cells([4, 3, 2, 1, 0])  # Reverse order
+        assert nb.cells[0].source == "cell_4 = 4"
+
+        manager.reorder_cells([1, 0, 2, 3, 4])  # Swap first two
+        assert nb.cells[0].source == "cell_3 = 3"
+
+        # Add two additional cells
+        manager.insert_cell(5, "code", "extra_1 = 10")
+        manager.insert_cell(6, "code", "extra_2 = 20")
+        assert len(nb.cells) == 7
+
+        # Rearrange one more time
+        manager.move_cell(6, 0)  # Move last cell to first
+        assert nb.cells[0].source == "extra_2 = 20"
+
+        # Undo 3 times
+        # Should undo: (1) move_cell, (2) insert extra_2, (3) insert extra_1
+        result = manager.undo(steps=3)
+        assert "✓ Undid 3 operation" in result
+
+        # Verify state
+        assert len(nb.cells) == 5  # Back to 5 cells
+        assert nb.cells[0].source == "cell_3 = 3"  # First rearrangement still in place
+
+        # Verify the extra cells are gone
+        for cell in nb.cells:
+            assert "extra_" not in cell.source
+
+    def test_undo_with_empty_stack(self, manager, sample_notebook):
+        """Test undo when there's nothing to undo"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.undo()
+        assert "Nothing to undo" in result
+
+    def test_redo_with_empty_stack(self, manager, sample_notebook):
+        """Test redo when there's nothing to redo"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.redo()
+        assert "Nothing to redo" in result
+
+    def test_undo_more_than_available(self, manager, sample_notebook):
+        """Test undoing more steps than available"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Perform 2 operations
+        manager.insert_cell(0, "code", "a = 1")
+        manager.insert_cell(1, "code", "b = 2")
+
+        # Try to undo 5 steps (only 2 available)
+        result = manager.undo(steps=5)
+        assert "only 2 operations" in result or "✓ Undid 2 operation" in result
+
+    def test_redo_more_than_available(self, manager, sample_notebook):
+        """Test redoing more steps than available"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Perform and undo 2 operations
+        manager.insert_cell(0, "code", "a = 1")
+        manager.insert_cell(1, "code", "b = 2")
+        manager.undo(steps=2)
+
+        # Try to redo 5 steps (only 2 available)
+        result = manager.redo(steps=5)
+        assert "only 2 operations" in result or "✓ Redid 2 operation" in result
+
+    def test_get_history(self, manager, sample_notebook):
+        """Test getting operation history"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Perform some operations
+        manager.insert_cell(0, "code", "a = 1")
+        manager.overwrite_cell_source(0, "a = 2")
+
+        result = manager.get_history()
+        assert "Operation History" in result
+        assert "Undo available" in result
+        assert "Redo available" in result
+        assert "Insert" in result
+        assert "Overwrite" in result
+
+    def test_get_history_with_undo_redo(self, manager, sample_notebook):
+        """Test history after undo/redo operations"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Perform operations
+        manager.insert_cell(0, "code", "a = 1")
+        manager.insert_cell(1, "code", "b = 2")
+
+        # Undo one
+        manager.undo()
+
+        result = manager.get_history()
+        assert "Operation History" in result
+        assert "Undo available" in result
+        assert "Redo available" in result
+        # Should have 1 in undo stack, 1 in redo stack
+
+    def test_clear_history(self, manager, sample_notebook):
+        """Test clearing operation history"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Perform operations
+        manager.insert_cell(0, "code", "a = 1")
+        manager.insert_cell(1, "code", "b = 2")
+
+        # Clear history
+        result = manager.clear_history()
+        assert "✓ History cleared" in result
+
+        # Verify history is empty
+        history = manager.get_history()
+        assert "0 operation" in history or "No operations" in history
+
+        # Verify undo fails
+        undo_result = manager.undo()
+        assert "Nothing to undo" in undo_result
+
+    def test_history_per_notebook(self, manager, temp_dir):
+        """Test that each notebook has its own history"""
+        # Create two notebooks
+        nb1 = new_nb()
+        nb1_path = temp_dir / "nb1.ipynb"
+        write_nb(nb1, nb1_path)
+
+        nb2 = new_nb()
+        nb2_path = temp_dir / "nb2.ipynb"
+        write_nb(nb2, nb2_path)
+
+        # Use first notebook and perform operations
+        manager.use_notebook("nb1", "nb1.ipynb", mode="connect")
+        manager.insert_cell(0, "code", "nb1_cell = 1")
+
+        # Switch to second notebook and perform different operations
+        manager.set_active_notebook("nb1")  # Explicitly keep nb1 active
+        manager.use_notebook("nb2", "nb2.ipynb", mode="connect")
+        manager.insert_cell(0, "code", "nb2_cell = 2")
+
+        # Undo in nb2
+        manager.undo()
+        nb2_obj = manager.notebooks["nb2"].notebook
+        assert len(nb2_obj.cells) == 0
+
+        # Switch back to nb1 and verify its history is separate
+        manager.set_active_notebook("nb1")
+        nb1_obj = manager.notebooks["nb1"].notebook
+        assert len(nb1_obj.cells) == 1  # nb1's insert wasn't undone
+        assert nb1_obj.cells[0].source == "nb1_cell = 1"
+
+    def test_undo_no_active_notebook(self, manager):
+        """Test undo when no notebook is active"""
+        result = manager.undo()
+        assert "Error" in result
+        assert "No active notebook" in result
+
+    def test_redo_no_active_notebook(self, manager):
+        """Test redo when no notebook is active"""
+        result = manager.redo()
+        assert "Error" in result
+        assert "No active notebook" in result
+
+    def test_get_history_no_active_notebook(self, manager):
+        """Test get_history when no notebook is active"""
+        result = manager.get_history()
+        assert "Error" in result
+        assert "No active notebook" in result
+
+    def test_clear_history_no_active_notebook(self, manager):
+        """Test clear_history when no notebook is active"""
+        result = manager.clear_history()
+        assert "Error" in result
+        assert "No active notebook" in result
+
+    def test_undo_redo_complex_sequence(self, manager, temp_dir):
+        """Test a complex sequence of operations with undo/redo"""
+        # Create empty notebook
+        nb = new_nb()
+        nb_path = temp_dir / "complex.ipynb"
+        write_nb(nb, nb_path)
+
+        manager.use_notebook("test", "complex.ipynb", mode="connect")
+        nb = manager.notebooks["test"].notebook
+
+        # Complex sequence
+        manager.insert_cell(0, "code", "a = 1")
+        manager.insert_cell(1, "code", "b = 2")
+        manager.insert_cell(2, "code", "c = 3")
+        assert len(nb.cells) == 3
+
+        manager.reorder_cells([2, 1, 0])  # Reverse
+        assert nb.cells[0].source == "c = 3"
+
+        manager.delete_cell([1])  # Delete middle cell
+        assert len(nb.cells) == 2
+
+        # Undo delete
+        manager.undo()
+        assert len(nb.cells) == 3
+
+        # Undo reorder
+        manager.undo()
+        assert nb.cells[0].source == "a = 1"
+
+        # Redo reorder
+        manager.redo()
+        assert nb.cells[0].source == "c = 3"
+
+        # Redo delete
+        manager.redo()
+        assert len(nb.cells) == 2
+
+        # New operation clears redo stack
+        manager.insert_cell(2, "code", "d = 4")
+        assert len(nb.cells) == 3
+
+        # Can't redo anymore
+        result = manager.redo()
+        assert "Nothing to redo" in result

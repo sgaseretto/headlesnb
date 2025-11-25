@@ -28,7 +28,11 @@ class TestToolSchemas:
             "set_active_notebook",
             "move_cell",
             "swap_cells",
-            "reorder_cells"
+            "reorder_cells",
+            "undo",
+            "redo",
+            "get_history",
+            "clear_history"
         ]
 
         for tool in expected_tools:
@@ -202,3 +206,44 @@ class TestToolSchemas:
         # Check required fields
         required = schema["inputSchema"]["required"]
         assert "new_order" in required
+
+    def test_undo_schema(self):
+        """Test undo schema"""
+        schema = TOOL_SCHEMAS["undo"]
+        assert schema["name"] == "undo"
+        assert "undo" in schema["description"].lower()
+
+        props = schema["inputSchema"]["properties"]
+        assert "steps" in props
+        assert props["steps"]["type"] == "integer"
+        assert props["steps"]["minimum"] == 1
+
+    def test_redo_schema(self):
+        """Test redo schema"""
+        schema = TOOL_SCHEMAS["redo"]
+        assert schema["name"] == "redo"
+        assert "redo" in schema["description"].lower()
+
+        props = schema["inputSchema"]["properties"]
+        assert "steps" in props
+        assert props["steps"]["type"] == "integer"
+        assert props["steps"]["minimum"] == 1
+
+    def test_get_history_schema(self):
+        """Test get_history schema"""
+        schema = TOOL_SCHEMAS["get_history"]
+        assert schema["name"] == "get_history"
+        assert "history" in schema["description"].lower()
+
+        props = schema["inputSchema"]["properties"]
+        assert len(props) == 0  # No parameters
+
+    def test_clear_history_schema(self):
+        """Test clear_history schema"""
+        schema = TOOL_SCHEMAS["clear_history"]
+        assert schema["name"] == "clear_history"
+        assert "clear" in schema["description"].lower()
+        assert "history" in schema["description"].lower()
+
+        props = schema["inputSchema"]["properties"]
+        assert len(props) == 0  # No parameters

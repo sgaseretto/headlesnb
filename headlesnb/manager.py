@@ -12,6 +12,16 @@ from dataclasses import dataclass, field
 from execnb.shell import CaptureShell
 from execnb.nbio import read_nb, write_nb, new_nb, mk_cell, NbCell
 
+from .history import (
+    OperationHistory,
+    InsertCellCommand,
+    DeleteCellCommand,
+    OverwriteCellCommand,
+    MoveCellCommand,
+    SwapCellsCommand,
+    ReorderCellsCommand
+)
+
 
 @dataclass
 class NotebookInfo:
@@ -21,6 +31,7 @@ class NotebookInfo:
     shell: CaptureShell
     notebook: Any  # The notebook object
     kernel_id: str
+    history: OperationHistory = field(default_factory=lambda: OperationHistory(max_size=100))
     created_at: datetime = field(default_factory=datetime.now)
     last_activity: datetime = field(default_factory=datetime.now)
     is_active: bool = False
@@ -434,45 +445,44 @@ class NotebookManager:
             return f"Error: Invalid cell_type '{cell_type}'. Use 'code' or 'markdown'."
 
         nb_info = self.notebooks[self.active_notebook]
-        nb = nb_info.notebook
 
-        # Create new cell
-        new_cell = mk_cell(cell_source, cell_type=cell_type)
-
-        # Handle append case
-        if cell_index == -1:
-            cell_index = len(nb.cells)
-
-        # Insert cell
-        nb.cells.insert(cell_index, new_cell)
-
-        # Reindex cells
-        for i, cell in enumerate(nb.cells):
-            cell.idx_ = i
-
-        # Save notebook
-        write_nb(nb, nb_info.path)
-        nb_info.last_activity = datetime.now()
-
-        # Get surrounding cells context
-        context_start = max(0, cell_index - 2)
-        context_end = min(len(nb.cells), cell_index + 3)
-        context_cells = []
-
-        for i in range(context_start, context_end):
-            cell = nb.cells[i]
-            marker = ">>> NEW <<<" if i == cell_index else ""
-            first_line = cell.source.split('\n')[0][:40] if cell.source else "(empty)"
-            context_cells.append(f"[{i}] {cell.cell_type}: {first_line} {marker}")
-
-        context = "\n".join(context_cells)
-
-        return (
-            f"✓ Cell inserted at index {cell_index}\n"
-            f"Type: {cell_type}\n"
-            f"Notebook: {self.active_notebook}\n"
-            f"\nSurrounding cells:\n{context}"
+        # Create and execute command
+        command = InsertCellCommand(
+            cell_index=cell_index,
+            cell_type=cell_type,
+            cell_source=cell_source
         )
+
+        try:
+            command.execute(self)
+            nb_info.history.add_command(command)
+
+            # Get the actual index (in case it was -1)
+            actual_index = command.cell_index
+            nb = nb_info.notebook
+
+            # Get surrounding cells context
+            context_start = max(0, actual_index - 2)
+            context_end = min(len(nb.cells), actual_index + 3)
+            context_cells = []
+
+            for i in range(context_start, context_end):
+                cell = nb.cells[i]
+                marker = ">>> NEW <<<" if i == actual_index else ""
+                first_line = cell.source.split('\n')[0][:40] if cell.source else "(empty)"
+                context_cells.append(f"[{i}] {cell.cell_type}: {first_line} {marker}")
+
+            context = "\n".join(context_cells)
+
+            return (
+                f"✓ Cell inserted at index {actual_index}\n"
+                f"Type: {cell_type}\n"
+                f"Notebook: {self.active_notebook}\n"
+                f"\nSurrounding cells:\n{context}"
+            )
+
+        except Exception as e:
+            return f"Error inserting cell: {str(e)}"
 
     def overwrite_cell_source(
         self,
@@ -498,32 +508,38 @@ class NotebookManager:
         if cell_index < 0 or cell_index >= len(nb.cells):
             return f"Error: Cell index {cell_index} out of range (0-{len(nb.cells) - 1})"
 
-        cell = nb.cells[cell_index]
-        old_source = cell.source
+        old_source = nb.cells[cell_index].source
 
-        # Update cell source
-        cell.set_source(cell_source)
-
-        # Save notebook
-        write_nb(nb, nb_info.path)
-        nb_info.last_activity = datetime.now()
-
-        # Generate diff
-        diff = difflib.unified_diff(
-            old_source.splitlines(keepends=True),
-            cell_source.splitlines(keepends=True),
-            lineterm='',
-            fromfile=f'Cell [{cell_index}] (old)',
-            tofile=f'Cell [{cell_index}] (new)'
+        # Create and execute command
+        command = OverwriteCellCommand(
+            cell_index=cell_index,
+            old_source=old_source,
+            new_source=cell_source
         )
 
-        diff_text = ''.join(diff)
+        try:
+            command.execute(self)
+            nb_info.history.add_command(command)
 
-        return (
-            f"✓ Cell [{cell_index}] source overwritten\n"
-            f"Notebook: {self.active_notebook}\n"
-            f"\nDiff:\n{'-' * 80}\n{diff_text}"
-        )
+            # Generate diff
+            diff = difflib.unified_diff(
+                old_source.splitlines(keepends=True),
+                cell_source.splitlines(keepends=True),
+                lineterm='',
+                fromfile=f'Cell [{cell_index}] (old)',
+                tofile=f'Cell [{cell_index}] (new)'
+            )
+
+            diff_text = ''.join(diff)
+
+            return (
+                f"✓ Cell [{cell_index}] source overwritten\n"
+                f"Notebook: {self.active_notebook}\n"
+                f"\nDiff:\n{'-' * 80}\n{diff_text}"
+            )
+
+        except Exception as e:
+            return f"Error overwriting cell: {str(e)}"
 
     def execute_cell(
         self,
@@ -674,34 +690,36 @@ class NotebookManager:
         if invalid:
             return f"Error: Invalid cell indices: {invalid} (range: 0-{len(nb.cells) - 1})"
 
-        # Sort indices in descending order to avoid index shifting
-        sorted_indices = sorted(set(cell_indices), reverse=True)
+        # Create and execute command
+        command = DeleteCellCommand(cell_indices=cell_indices)
 
-        deleted_info = []
+        try:
+            command.execute(self)
+            nb_info.history.add_command(command)
 
-        for idx in sorted_indices:
-            cell = nb.cells[idx]
+            # Sort indices for display
+            sorted_indices = sorted(set(cell_indices), reverse=True)
+
+            # Gather deleted cell info for display
+            deleted_info = []
             if include_source:
-                deleted_info.append(
-                    f"Cell [{idx}] ({cell.cell_type}):\n{'-' * 40}\n{cell.source}\n"
-                )
-            del nb.cells[idx]
+                for item in command.deleted_cells:
+                    idx = item['index']
+                    cell_dict = item['cell']
+                    deleted_info.append(
+                        f"Cell [{idx}] ({cell_dict.get('cell_type', 'unknown')}):\n{'-' * 40}\n{cell_dict.get('source', '')}\n"
+                    )
 
-        # Reindex cells
-        for i, cell in enumerate(nb.cells):
-            cell.idx_ = i
+            result = f"✓ Deleted {len(sorted_indices)} cell(s): {sorted_indices}\n"
+            result += f"Notebook: {self.active_notebook}\n"
 
-        # Save notebook
-        write_nb(nb, nb_info.path)
-        nb_info.last_activity = datetime.now()
+            if include_source and deleted_info:
+                result += f"\n{'=' * 80}\nDeleted cells:\n\n" + "\n".join(deleted_info)
 
-        result = f"✓ Deleted {len(sorted_indices)} cell(s): {sorted_indices}\n"
-        result += f"Notebook: {self.active_notebook}\n"
+            return result
 
-        if include_source and deleted_info:
-            result += f"\n{'=' * 80}\nDeleted cells:\n\n" + "\n".join(deleted_info)
-
-        return result
+        except Exception as e:
+            return f"Error deleting cells: {str(e)}"
 
     def move_cell(
         self,
@@ -734,38 +752,34 @@ class NotebookManager:
         if from_index == to_index:
             return f"✓ Cell already at index {to_index}, no move needed"
 
-        # Remove cell from original position
-        cell = nb.cells.pop(from_index)
+        # Create and execute command
+        command = MoveCellCommand(from_index=from_index, to_index=to_index)
 
-        # Insert at new position
-        nb.cells.insert(to_index, cell)
+        try:
+            command.execute(self)
+            nb_info.history.add_command(command)
 
-        # Reindex cells
-        for i, c in enumerate(nb.cells):
-            c.idx_ = i
+            # Get context around the moved cell
+            context_start = max(0, to_index - 2)
+            context_end = min(len(nb.cells), to_index + 3)
+            context_cells = []
 
-        # Save notebook
-        write_nb(nb, nb_info.path)
-        nb_info.last_activity = datetime.now()
+            for i in range(context_start, context_end):
+                c = nb.cells[i]
+                marker = ">>> MOVED HERE <<<" if i == to_index else ""
+                first_line = c.source.split('\n')[0][:40] if c.source else "(empty)"
+                context_cells.append(f"[{i}] {c.cell_type}: {first_line} {marker}")
 
-        # Get context around the moved cell
-        context_start = max(0, to_index - 2)
-        context_end = min(len(nb.cells), to_index + 3)
-        context_cells = []
+            context = "\n".join(context_cells)
 
-        for i in range(context_start, context_end):
-            c = nb.cells[i]
-            marker = ">>> MOVED HERE <<<" if i == to_index else ""
-            first_line = c.source.split('\n')[0][:40] if c.source else "(empty)"
-            context_cells.append(f"[{i}] {c.cell_type}: {first_line} {marker}")
+            return (
+                f"✓ Cell moved from index {from_index} to {to_index}\n"
+                f"Notebook: {self.active_notebook}\n"
+                f"\nNotebook structure:\n{context}"
+            )
 
-        context = "\n".join(context_cells)
-
-        return (
-            f"✓ Cell moved from index {from_index} to {to_index}\n"
-            f"Notebook: {self.active_notebook}\n"
-            f"\nNotebook structure:\n{context}"
-        )
+        except Exception as e:
+            return f"Error moving cell: {str(e)}"
 
     def swap_cells(
         self,
@@ -798,23 +812,22 @@ class NotebookManager:
         if index1 == index2:
             return f"✓ Cells are the same, no swap needed"
 
-        # Swap cells
-        nb.cells[index1], nb.cells[index2] = nb.cells[index2], nb.cells[index1]
+        # Create and execute command
+        command = SwapCellsCommand(index1=index1, index2=index2)
 
-        # Reindex cells
-        for i, c in enumerate(nb.cells):
-            c.idx_ = i
+        try:
+            command.execute(self)
+            nb_info.history.add_command(command)
 
-        # Save notebook
-        write_nb(nb, nb_info.path)
-        nb_info.last_activity = datetime.now()
+            return (
+                f"✓ Swapped cells at indices {index1} and {index2}\n"
+                f"Notebook: {self.active_notebook}\n"
+                f"Cell {index1}: {nb.cells[index1].source.split(chr(10))[0][:40]}\n"
+                f"Cell {index2}: {nb.cells[index2].source.split(chr(10))[0][:40]}"
+            )
 
-        return (
-            f"✓ Swapped cells at indices {index1} and {index2}\n"
-            f"Notebook: {self.active_notebook}\n"
-            f"Cell {index1}: {nb.cells[index1].source.split(chr(10))[0][:40]}\n"
-            f"Cell {index2}: {nb.cells[index2].source.split(chr(10))[0][:40]}"
-        )
+        except Exception as e:
+            return f"Error swapping cells: {str(e)}"
 
     def reorder_cells(
         self,
@@ -859,33 +872,31 @@ class NotebookManager:
                 error_msg += f" Invalid indices: {sorted(extra)}."
             return error_msg
 
-        # Create new cell list in the specified order
-        old_cells = nb.cells.copy()
-        nb.cells = [old_cells[i] for i in new_order]
+        # Create and execute command
+        command = ReorderCellsCommand(new_order=new_order)
 
-        # Reindex cells
-        for i, c in enumerate(nb.cells):
-            c.idx_ = i
+        try:
+            command.execute(self)
+            nb_info.history.add_command(command)
 
-        # Save notebook
-        write_nb(nb, nb_info.path)
-        nb_info.last_activity = datetime.now()
+            # Create summary of reordering
+            reorder_summary = []
+            for new_pos, old_pos in enumerate(new_order):
+                if new_pos != old_pos:
+                    cell = nb.cells[new_pos]
+                    first_line = cell.source.split('\n')[0][:40] if cell.source else "(empty)"
+                    reorder_summary.append(f"  [{old_pos}] → [{new_pos}]: {first_line}")
 
-        # Create summary of reordering
-        reorder_summary = []
-        for new_pos, old_pos in enumerate(new_order):
-            if new_pos != old_pos:
-                cell = nb.cells[new_pos]
-                first_line = cell.source.split('\n')[0][:40] if cell.source else "(empty)"
-                reorder_summary.append(f"  [{old_pos}] → [{new_pos}]: {first_line}")
+            summary = "\n".join(reorder_summary) if reorder_summary else "  (all cells already in order)"
 
-        summary = "\n".join(reorder_summary) if reorder_summary else "  (all cells already in order)"
+            return (
+                f"✓ Reordered {len(nb.cells)} cells\n"
+                f"Notebook: {self.active_notebook}\n"
+                f"\nChanges:\n{summary}"
+            )
 
-        return (
-            f"✓ Reordered {len(nb.cells)} cells\n"
-            f"Notebook: {self.active_notebook}\n"
-            f"\nChanges:\n{summary}"
-        )
+        except Exception as e:
+            return f"Error reordering cells: {str(e)}"
 
     def execute_code(
         self,
@@ -964,6 +975,115 @@ class NotebookManager:
         self.notebooks[notebook_name].is_active = True
 
         return f"✓ Notebook '{notebook_name}' is now active"
+
+    # ================== Undo/Redo Operations ==================
+
+    def undo(self, steps: int = 1) -> str:
+        """
+        Undo the last N operations in the active notebook.
+
+        Args:
+            steps: Number of operations to undo (default: 1)
+
+        Returns:
+            Success message with list of undone operations
+        """
+        if not self.active_notebook:
+            return "Error: No active notebook. Use use_notebook first."
+
+        nb_info = self.notebooks[self.active_notebook]
+
+        if not nb_info.history.can_undo():
+            return "Nothing to undo"
+
+        # Get descriptions before undoing
+        descriptions = nb_info.history.get_undo_description(steps)
+
+        try:
+            results = nb_info.history.undo(self, steps)
+
+            summary = f"✓ Undid {len(results)} operation(s):\n"
+            for desc in descriptions[:len(results)]:
+                summary += f"  - {desc}\n"
+
+            return summary.rstrip()
+
+        except Exception as e:
+            return f"Error during undo: {str(e)}"
+
+    def redo(self, steps: int = 1) -> str:
+        """
+        Redo the last N undone operations in the active notebook.
+
+        Args:
+            steps: Number of operations to redo (default: 1)
+
+        Returns:
+            Success message with list of redone operations
+        """
+        if not self.active_notebook:
+            return "Error: No active notebook. Use use_notebook first."
+
+        nb_info = self.notebooks[self.active_notebook]
+
+        if not nb_info.history.can_redo():
+            return "Nothing to redo"
+
+        # Get descriptions before redoing
+        descriptions = nb_info.history.get_redo_description(steps)
+
+        try:
+            results = nb_info.history.redo(self, steps)
+
+            summary = f"✓ Redid {len(results)} operation(s):\n"
+            for desc in descriptions[:len(results)]:
+                summary += f"  - {desc}\n"
+
+            return summary.rstrip()
+
+        except Exception as e:
+            return f"Error during redo: {str(e)}"
+
+    def get_history(self) -> str:
+        """
+        Get the operation history for the active notebook.
+
+        Returns:
+            Formatted history summary
+        """
+        if not self.active_notebook:
+            return "Error: No active notebook. Use use_notebook first."
+
+        nb_info = self.notebooks[self.active_notebook]
+        summary = nb_info.history.get_history_summary()
+
+        result = f"Operation History for '{self.active_notebook}':\n"
+        result += f"  Undo available: {summary['undo_count']} operation(s)\n"
+        result += f"  Redo available: {summary['redo_count']} operation(s)\n"
+
+        if summary['recent_operations']:
+            result += f"\nRecent operations:\n"
+            for i, op in enumerate(summary['recent_operations'], 1):
+                result += f"  {i}. {op}\n"
+        else:
+            result += "\nNo operations in history\n"
+
+        return result.rstrip()
+
+    def clear_history(self) -> str:
+        """
+        Clear the operation history for the active notebook.
+
+        Returns:
+            Success message
+        """
+        if not self.active_notebook:
+            return "Error: No active notebook. Use use_notebook first."
+
+        nb_info = self.notebooks[self.active_notebook]
+        nb_info.history.clear()
+
+        return f"✓ History cleared for notebook '{self.active_notebook}'"
 
     # ================== Helper Methods ==================
 

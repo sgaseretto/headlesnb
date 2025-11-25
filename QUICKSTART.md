@@ -172,6 +172,31 @@ manager.stop_execution()
 print(manager.list_kernels())
 ```
 
+### Undo/Redo Operations
+
+```python
+# Perform some operations
+manager.insert_cell(0, "code", "x = 1")
+manager.insert_cell(1, "code", "y = 2")
+manager.move_cell(1, 0)
+
+# Undo the last operation
+manager.undo()  # Undoes move_cell
+
+# Undo multiple operations
+manager.undo(steps=2)  # Undoes the two insert operations
+
+# Redo operations
+manager.redo()  # Redoes one insert
+manager.redo(steps=2)  # Redoes two operations
+
+# View operation history
+print(manager.get_history())
+
+# Clear history
+manager.clear_history()
+```
+
 ## Run Examples
 
 ```bash

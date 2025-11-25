@@ -374,6 +374,52 @@ TOOL_SCHEMAS = {
             },
             "required": ["new_order"]
         }
+    },
+    "undo": {
+        "name": "undo",
+        "description": "Undo the last N operations in the active notebook. Operations include: insert_cell, delete_cell, overwrite_cell_source, move_cell, swap_cells, and reorder_cells. Does not undo cell executions.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "integer",
+                    "description": "Number of operations to undo (default: 1)",
+                    "default": 1,
+                    "minimum": 1
+                }
+            }
+        }
+    },
+    "redo": {
+        "name": "redo",
+        "description": "Redo the last N undone operations in the active notebook. Redo stack is cleared when a new operation is performed.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "integer",
+                    "description": "Number of operations to redo (default: 1)",
+                    "default": 1,
+                    "minimum": 1
+                }
+            }
+        }
+    },
+    "get_history": {
+        "name": "get_history",
+        "description": "Get the operation history for the active notebook, showing both undo and redo stacks",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    "clear_history": {
+        "name": "clear_history",
+        "description": "Clear the operation history for the active notebook. This removes all undo/redo information.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 

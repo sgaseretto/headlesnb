@@ -191,6 +191,27 @@ class HeadlesNBMCPServer:
                     )
                     return [TextContent(type="text", text=result)]
 
+                # History tools
+                elif name == "undo":
+                    result = self.manager.undo(
+                        steps=arguments.get("steps", 1)
+                    )
+                    return [TextContent(type="text", text=result)]
+
+                elif name == "redo":
+                    result = self.manager.redo(
+                        steps=arguments.get("steps", 1)
+                    )
+                    return [TextContent(type="text", text=result)]
+
+                elif name == "get_history":
+                    result = self.manager.get_history()
+                    return [TextContent(type="text", text=result)]
+
+                elif name == "clear_history":
+                    result = self.manager.clear_history()
+                    return [TextContent(type="text", text=result)]
+
                 else:
                     error_msg = f"Unknown tool: {name}"
                     logger.error(error_msg)
