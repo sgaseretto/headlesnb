@@ -461,3 +461,239 @@ class TestNotebookManager:
         # Clean up
         manager.unuse_notebook("nb1")
         manager.unuse_notebook("nb2")
+
+    # ================== Cell Reordering Tests ==================
+
+    def test_move_cell(self, manager, sample_notebook):
+        """Test moving a cell from one position to another"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Original order: [0: Hello, 1: markdown, 2: x=42]
+        # Move cell 0 to position 2
+        result = manager.move_cell(0, 2)
+        assert "✓ Cell moved from index 0 to 2" in result
+        assert "MOVED HERE" in result
+
+        # Verify new order
+        nb = manager.notebooks["test"].notebook
+        assert nb.cells[0].source == "# Test Notebook"  # Was at 1
+        assert nb.cells[1].source == "x = 42\nprint(x)"  # Was at 2
+        assert nb.cells[2].source == "print('Hello, World!')"  # Was at 0
+
+        # Verify indices are updated
+        assert nb.cells[0].idx_ == 0
+        assert nb.cells[1].idx_ == 1
+        assert nb.cells[2].idx_ == 2
+
+    def test_move_cell_forward(self, manager, sample_notebook):
+        """Test moving a cell forward in the notebook"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Move last cell to first position
+        result = manager.move_cell(2, 0)
+        assert "✓ Cell moved from index 2 to 0" in result
+
+        nb = manager.notebooks["test"].notebook
+        assert nb.cells[0].source == "x = 42\nprint(x)"
+
+    def test_move_cell_same_position(self, manager, sample_notebook):
+        """Test moving a cell to its own position"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.move_cell(1, 1)
+        assert "already at index 1" in result
+
+    def test_move_cell_invalid_index(self, manager, sample_notebook):
+        """Test error with invalid indices"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.move_cell(100, 0)
+        assert "Error" in result
+        assert "out of range" in result
+
+        result = manager.move_cell(0, 100)
+        assert "Error" in result
+        assert "out of range" in result
+
+    def test_move_cell_no_active_notebook(self, manager):
+        """Test error when no active notebook"""
+        result = manager.move_cell(0, 1)
+        assert "Error" in result
+        assert "No active notebook" in result
+
+    def test_swap_cells(self, manager, sample_notebook):
+        """Test swapping two cells"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        cell0_before = nb.cells[0].source
+        cell2_before = nb.cells[2].source
+
+        # Swap cells 0 and 2
+        result = manager.swap_cells(0, 2)
+        assert "✓ Swapped cells at indices 0 and 2" in result
+
+        # Verify swap
+        assert nb.cells[0].source == cell2_before
+        assert nb.cells[2].source == cell0_before
+
+        # Middle cell should be unchanged
+        assert nb.cells[1].source == "# Test Notebook"
+
+        # Verify indices are updated
+        assert nb.cells[0].idx_ == 0
+        assert nb.cells[1].idx_ == 1
+        assert nb.cells[2].idx_ == 2
+
+    def test_swap_cells_adjacent(self, manager, sample_notebook):
+        """Test swapping adjacent cells"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        cell0_before = nb.cells[0].source
+        cell1_before = nb.cells[1].source
+
+        result = manager.swap_cells(0, 1)
+        assert "✓ Swapped" in result
+
+        assert nb.cells[0].source == cell1_before
+        assert nb.cells[1].source == cell0_before
+
+    def test_swap_cells_same_index(self, manager, sample_notebook):
+        """Test swapping a cell with itself"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.swap_cells(1, 1)
+        assert "same" in result
+
+    def test_swap_cells_invalid_index(self, manager, sample_notebook):
+        """Test error with invalid indices"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.swap_cells(100, 0)
+        assert "Error" in result
+        assert "out of range" in result
+
+    def test_swap_cells_no_active_notebook(self, manager):
+        """Test error when no active notebook"""
+        result = manager.swap_cells(0, 1)
+        assert "Error" in result
+        assert "No active notebook" in result
+
+    def test_reorder_cells(self, manager, sample_notebook):
+        """Test reordering all cells"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_sources = [cell.source for cell in nb.cells]
+
+        # Reorder: [2, 0, 1] - last becomes first, first becomes second, middle becomes last
+        result = manager.reorder_cells([2, 0, 1])
+        assert "✓ Reordered 3 cells" in result
+
+        # Verify new order
+        assert nb.cells[0].source == original_sources[2]  # x = 42
+        assert nb.cells[1].source == original_sources[0]  # Hello World
+        assert nb.cells[2].source == original_sources[1]  # markdown
+
+        # Verify indices
+        for i, cell in enumerate(nb.cells):
+            assert cell.idx_ == i
+
+    def test_reorder_cells_reverse(self, manager, sample_notebook):
+        """Test reversing cell order"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        nb = manager.notebooks["test"].notebook
+        original_sources = [cell.source for cell in nb.cells]
+
+        # Reverse order: [2, 1, 0]
+        result = manager.reorder_cells([2, 1, 0])
+        assert "✓ Reordered" in result
+
+        # Verify reversed order
+        assert nb.cells[0].source == original_sources[2]
+        assert nb.cells[1].source == original_sources[1]
+        assert nb.cells[2].source == original_sources[0]
+
+    def test_reorder_cells_no_change(self, manager, sample_notebook):
+        """Test reordering with same order"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.reorder_cells([0, 1, 2])
+        assert "✓ Reordered" in result
+        assert "already in order" in result
+
+    def test_reorder_cells_invalid_length(self, manager, sample_notebook):
+        """Test error with wrong number of indices"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.reorder_cells([0, 1])  # Too few
+        assert "Error" in result
+        assert "length" in result
+
+        result = manager.reorder_cells([0, 1, 2, 3])  # Too many
+        assert "Error" in result
+        assert "length" in result
+
+    def test_reorder_cells_duplicate_index(self, manager, sample_notebook):
+        """Test error with duplicate indices"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.reorder_cells([0, 0, 1])
+        assert "Error" in result
+        assert "Invalid" in result
+
+    def test_reorder_cells_invalid_index(self, manager, sample_notebook):
+        """Test error with invalid index values"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        result = manager.reorder_cells([0, 1, 10])
+        assert "Error" in result
+        assert "Invalid" in result
+
+    def test_reorder_cells_no_active_notebook(self, manager):
+        """Test error when no active notebook"""
+        result = manager.reorder_cells([0, 1, 2])
+        assert "Error" in result
+        assert "No active notebook" in result
+
+    def test_reorder_cells_complex(self, manager, temp_dir):
+        """Test complex reordering with many cells"""
+        # Create notebook with 5 cells
+        nb = new_nb()
+        for i in range(5):
+            nb.cells.append(mk_cell(f"cell_{i}", cell_type='code'))
+
+        nb_path = temp_dir / "complex.ipynb"
+        write_nb(nb, nb_path)
+
+        manager.use_notebook("complex", "complex.ipynb", mode="connect")
+
+        # Reorder: [4, 2, 0, 3, 1]
+        result = manager.reorder_cells([4, 2, 0, 3, 1])
+        assert "✓ Reordered 5 cells" in result
+
+        nb = manager.notebooks["complex"].notebook
+        assert nb.cells[0].source == "cell_4"
+        assert nb.cells[1].source == "cell_2"
+        assert nb.cells[2].source == "cell_0"
+        assert nb.cells[3].source == "cell_3"
+        assert nb.cells[4].source == "cell_1"
+
+    def test_cell_reordering_persists(self, manager, sample_notebook):
+        """Test that cell reordering is saved to file"""
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Reorder cells
+        manager.reorder_cells([2, 0, 1])
+
+        # Close and reopen notebook
+        manager.unuse_notebook("test")
+        manager.use_notebook("test", str(sample_notebook.name), mode="connect")
+
+        # Verify order persisted
+        nb = manager.notebooks["test"].notebook
+        assert "x = 42" in nb.cells[0].source
+        assert "Hello, World" in nb.cells[1].source
+        assert "# Test Notebook" in nb.cells[2].source

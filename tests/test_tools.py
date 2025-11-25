@@ -25,7 +25,10 @@ class TestToolSchemas:
             "delete_cell",
             "execute_code",
             "stop_execution",
-            "set_active_notebook"
+            "set_active_notebook",
+            "move_cell",
+            "swap_cells",
+            "reorder_cells"
         ]
 
         for tool in expected_tools:
@@ -152,3 +155,50 @@ class TestToolSchemas:
         assert "cell_index" in required
         assert "cell_type" in required
         assert "cell_source" in required
+
+    def test_move_cell_schema(self):
+        """Test move_cell schema"""
+        schema = TOOL_SCHEMAS["move_cell"]
+        assert schema["name"] == "move_cell"
+        assert "move" in schema["description"].lower()
+
+        props = schema["inputSchema"]["properties"]
+        assert "from_index" in props
+        assert "to_index" in props
+
+        # Check required fields
+        required = schema["inputSchema"]["required"]
+        assert "from_index" in required
+        assert "to_index" in required
+
+    def test_swap_cells_schema(self):
+        """Test swap_cells schema"""
+        schema = TOOL_SCHEMAS["swap_cells"]
+        assert schema["name"] == "swap_cells"
+        assert "swap" in schema["description"].lower()
+
+        props = schema["inputSchema"]["properties"]
+        assert "index1" in props
+        assert "index2" in props
+
+        # Check required fields
+        required = schema["inputSchema"]["required"]
+        assert "index1" in required
+        assert "index2" in required
+
+    def test_reorder_cells_schema(self):
+        """Test reorder_cells schema"""
+        schema = TOOL_SCHEMAS["reorder_cells"]
+        assert schema["name"] == "reorder_cells"
+        assert "reorder" in schema["description"].lower()
+
+        props = schema["inputSchema"]["properties"]
+        assert "new_order" in props
+
+        # Check array type for new_order
+        assert props["new_order"]["type"] == "array"
+        assert props["new_order"]["items"]["type"] == "integer"
+
+        # Check required fields
+        required = schema["inputSchema"]["required"]
+        assert "new_order" in required

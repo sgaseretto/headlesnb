@@ -703,6 +703,190 @@ class NotebookManager:
 
         return result
 
+    def move_cell(
+        self,
+        from_index: int,
+        to_index: int
+    ) -> str:
+        """
+        Move a cell from one position to another in the active notebook.
+
+        Args:
+            from_index: Current index of the cell to move (0-based)
+            to_index: Target index to move the cell to (0-based)
+
+        Returns:
+            Success message with notebook structure
+        """
+        if not self.active_notebook:
+            return "Error: No active notebook. Use use_notebook first."
+
+        nb_info = self.notebooks[self.active_notebook]
+        nb = nb_info.notebook
+
+        # Validate indices
+        if from_index < 0 or from_index >= len(nb.cells):
+            return f"Error: from_index {from_index} out of range (0-{len(nb.cells) - 1})"
+
+        if to_index < 0 or to_index >= len(nb.cells):
+            return f"Error: to_index {to_index} out of range (0-{len(nb.cells) - 1})"
+
+        if from_index == to_index:
+            return f"✓ Cell already at index {to_index}, no move needed"
+
+        # Remove cell from original position
+        cell = nb.cells.pop(from_index)
+
+        # Insert at new position
+        nb.cells.insert(to_index, cell)
+
+        # Reindex cells
+        for i, c in enumerate(nb.cells):
+            c.idx_ = i
+
+        # Save notebook
+        write_nb(nb, nb_info.path)
+        nb_info.last_activity = datetime.now()
+
+        # Get context around the moved cell
+        context_start = max(0, to_index - 2)
+        context_end = min(len(nb.cells), to_index + 3)
+        context_cells = []
+
+        for i in range(context_start, context_end):
+            c = nb.cells[i]
+            marker = ">>> MOVED HERE <<<" if i == to_index else ""
+            first_line = c.source.split('\n')[0][:40] if c.source else "(empty)"
+            context_cells.append(f"[{i}] {c.cell_type}: {first_line} {marker}")
+
+        context = "\n".join(context_cells)
+
+        return (
+            f"✓ Cell moved from index {from_index} to {to_index}\n"
+            f"Notebook: {self.active_notebook}\n"
+            f"\nNotebook structure:\n{context}"
+        )
+
+    def swap_cells(
+        self,
+        index1: int,
+        index2: int
+    ) -> str:
+        """
+        Swap two cells in the active notebook.
+
+        Args:
+            index1: Index of first cell (0-based)
+            index2: Index of second cell (0-based)
+
+        Returns:
+            Success message
+        """
+        if not self.active_notebook:
+            return "Error: No active notebook. Use use_notebook first."
+
+        nb_info = self.notebooks[self.active_notebook]
+        nb = nb_info.notebook
+
+        # Validate indices
+        if index1 < 0 or index1 >= len(nb.cells):
+            return f"Error: index1 {index1} out of range (0-{len(nb.cells) - 1})"
+
+        if index2 < 0 or index2 >= len(nb.cells):
+            return f"Error: index2 {index2} out of range (0-{len(nb.cells) - 1})"
+
+        if index1 == index2:
+            return f"✓ Cells are the same, no swap needed"
+
+        # Swap cells
+        nb.cells[index1], nb.cells[index2] = nb.cells[index2], nb.cells[index1]
+
+        # Reindex cells
+        for i, c in enumerate(nb.cells):
+            c.idx_ = i
+
+        # Save notebook
+        write_nb(nb, nb_info.path)
+        nb_info.last_activity = datetime.now()
+
+        return (
+            f"✓ Swapped cells at indices {index1} and {index2}\n"
+            f"Notebook: {self.active_notebook}\n"
+            f"Cell {index1}: {nb.cells[index1].source.split(chr(10))[0][:40]}\n"
+            f"Cell {index2}: {nb.cells[index2].source.split(chr(10))[0][:40]}"
+        )
+
+    def reorder_cells(
+        self,
+        new_order: List[int]
+    ) -> str:
+        """
+        Reorder cells according to a new sequence of indices.
+
+        Args:
+            new_order: List of cell indices in the desired order.
+                      Must contain all indices from 0 to len(cells)-1 exactly once.
+
+        Returns:
+            Success message with new cell order
+
+        Example:
+            # Original order: [0, 1, 2, 3]
+            # Reorder to: [2, 0, 3, 1]
+            manager.reorder_cells([2, 0, 3, 1])
+            # New order: Cell 2 is now at position 0, Cell 0 is now at position 1, etc.
+        """
+        if not self.active_notebook:
+            return "Error: No active notebook. Use use_notebook first."
+
+        nb_info = self.notebooks[self.active_notebook]
+        nb = nb_info.notebook
+
+        # Validate new_order
+        if len(new_order) != len(nb.cells):
+            return f"Error: new_order length ({len(new_order)}) doesn't match cell count ({len(nb.cells)})"
+
+        expected_indices = set(range(len(nb.cells)))
+        actual_indices = set(new_order)
+
+        if actual_indices != expected_indices:
+            missing = expected_indices - actual_indices
+            extra = actual_indices - expected_indices
+            error_msg = "Error: Invalid new_order."
+            if missing:
+                error_msg += f" Missing indices: {sorted(missing)}."
+            if extra:
+                error_msg += f" Invalid indices: {sorted(extra)}."
+            return error_msg
+
+        # Create new cell list in the specified order
+        old_cells = nb.cells.copy()
+        nb.cells = [old_cells[i] for i in new_order]
+
+        # Reindex cells
+        for i, c in enumerate(nb.cells):
+            c.idx_ = i
+
+        # Save notebook
+        write_nb(nb, nb_info.path)
+        nb_info.last_activity = datetime.now()
+
+        # Create summary of reordering
+        reorder_summary = []
+        for new_pos, old_pos in enumerate(new_order):
+            if new_pos != old_pos:
+                cell = nb.cells[new_pos]
+                first_line = cell.source.split('\n')[0][:40] if cell.source else "(empty)"
+                reorder_summary.append(f"  [{old_pos}] → [{new_pos}]: {first_line}")
+
+        summary = "\n".join(reorder_summary) if reorder_summary else "  (all cells already in order)"
+
+        return (
+            f"✓ Reordered {len(nb.cells)} cells\n"
+            f"Notebook: {self.active_notebook}\n"
+            f"\nChanges:\n{summary}"
+        )
+
     def execute_code(
         self,
         code: str,

@@ -171,6 +171,26 @@ class HeadlesNBMCPServer:
                     )
                     return [TextContent(type="text", text=result)]
 
+                elif name == "move_cell":
+                    result = self.manager.move_cell(
+                        from_index=arguments["from_index"],
+                        to_index=arguments["to_index"]
+                    )
+                    return [TextContent(type="text", text=result)]
+
+                elif name == "swap_cells":
+                    result = self.manager.swap_cells(
+                        index1=arguments["index1"],
+                        index2=arguments["index2"]
+                    )
+                    return [TextContent(type="text", text=result)]
+
+                elif name == "reorder_cells":
+                    result = self.manager.reorder_cells(
+                        new_order=arguments["new_order"]
+                    )
+                    return [TextContent(type="text", text=result)]
+
                 else:
                     error_msg = f"Unknown tool: {name}"
                     logger.error(error_msg)

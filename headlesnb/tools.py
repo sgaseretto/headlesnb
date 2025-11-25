@@ -323,6 +323,57 @@ TOOL_SCHEMAS = {
             },
             "required": ["notebook_name"]
         }
+    },
+    "move_cell": {
+        "name": "move_cell",
+        "description": "Move a cell from one position to another in the active notebook",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from_index": {
+                    "type": "integer",
+                    "description": "Current index of the cell to move (0-based)"
+                },
+                "to_index": {
+                    "type": "integer",
+                    "description": "Target index to move the cell to (0-based)"
+                }
+            },
+            "required": ["from_index", "to_index"]
+        }
+    },
+    "swap_cells": {
+        "name": "swap_cells",
+        "description": "Swap two cells in the active notebook",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "index1": {
+                    "type": "integer",
+                    "description": "Index of first cell (0-based)"
+                },
+                "index2": {
+                    "type": "integer",
+                    "description": "Index of second cell (0-based)"
+                }
+            },
+            "required": ["index1", "index2"]
+        }
+    },
+    "reorder_cells": {
+        "name": "reorder_cells",
+        "description": "Reorder cells according to a new sequence of indices. The new_order list must contain all indices from 0 to len(cells)-1 exactly once.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "new_order": {
+                    "type": "array",
+                    "description": "List of cell indices in the desired order (e.g., [2, 0, 3, 1] moves cell 2 to position 0, cell 0 to position 1, etc.)",
+                    "items": {"type": "integer"}
+                }
+            },
+            "required": ["new_order"]
+        }
     }
 }
 
