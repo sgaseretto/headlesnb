@@ -298,6 +298,98 @@ outputs = manager.execute_code(
 
 ---
 
+### move_cell
+
+Move a cell from one position to another in the active notebook.
+
+```python
+result = manager.move_cell(
+    from_index=1,
+    to_index=0
+)
+```
+
+**Parameters:**
+- `from_index` (int): Current index of the cell to move (0-based)
+- `to_index` (int): Target index to move the cell to (0-based)
+
+**Returns:** Success message with notebook structure around the moved cell
+
+**Example:**
+```python
+# Move imports cell to the top
+manager.move_cell(from_index=3, to_index=0)
+
+# Move conclusion to the end
+manager.move_cell(from_index=0, to_index=-1)  # Note: use actual last index, not -1
+```
+
+---
+
+### swap_cells
+
+Swap two cells in the active notebook.
+
+```python
+result = manager.swap_cells(
+    index1=0,
+    index2=2
+)
+```
+
+**Parameters:**
+- `index1` (int): Index of first cell (0-based)
+- `index2` (int): Index of second cell (0-based)
+
+**Returns:** Success message with information about swapped cells
+
+**Example:**
+```python
+# Swap adjacent cells
+manager.swap_cells(index1=0, index2=1)
+
+# Swap distant cells
+manager.swap_cells(index1=0, index2=5)
+```
+
+---
+
+### reorder_cells
+
+Reorder all cells according to a new sequence of indices.
+
+```python
+result = manager.reorder_cells(
+    new_order=[2, 0, 3, 1]
+)
+```
+
+**Parameters:**
+- `new_order` (list[int]): List of cell indices in the desired order. Must contain all indices from 0 to len(cells)-1 exactly once.
+
+**Returns:** Success message with summary of changes
+
+**Example:**
+```python
+# Reverse all cells
+nb_info = manager.notebooks[manager.active_notebook]
+cell_count = len(nb_info.notebook.cells)
+manager.reorder_cells(list(range(cell_count-1, -1, -1)))
+
+# Specific reordering: move cell 2 to start, then 0, then 3, then 1
+manager.reorder_cells([2, 0, 3, 1])
+
+# Organize notebook sections logically
+# If you have: [Results, Code, Setup, Imports, Analysis, Conclusion]
+# Indices:     [0,       1,    2,     3,       4,        5]
+# Reorder to:  [Setup, Imports, Analysis, Code, Results, Conclusion]
+manager.reorder_cells([2, 3, 4, 1, 0, 5])
+```
+
+**Note:** The `new_order` list must include every cell index exactly once. For example, if you have 4 cells (indices 0, 1, 2, 3), `new_order` must be a permutation of [0, 1, 2, 3].
+
+---
+
 ## Additional Tools
 
 ### stop_execution

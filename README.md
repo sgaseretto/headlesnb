@@ -112,7 +112,7 @@ Or integrate with Claude Desktop by adding to your configuration:
 7. **read_notebook** - Read notebook contents (brief or detailed)
 8. **set_active_notebook** - Switch the active notebook
 
-### Cell Operations (8 tools)
+### Cell Operations (11 tools)
 
 9. **insert_cell** - Insert a code or markdown cell
 10. **overwrite_cell_source** - Modify a cell's source code
@@ -122,6 +122,9 @@ Or integrate with Claude Desktop by adding to your configuration:
 14. **delete_cell** - Delete one or more cells
 15. **execute_code** - Execute code without saving to notebook
 16. **stop_execution** - Stop the currently running cell
+17. **move_cell** - Move a cell from one position to another
+18. **swap_cells** - Swap two cells
+19. **reorder_cells** - Reorder all cells in a notebook
 
 ## Documentation
 
@@ -176,6 +179,25 @@ print(files)
 # List with pagination
 files = manager.list_files(limit=10, start_index=0)
 print(files)
+```
+
+### Cell Reordering
+
+```python
+# Create a notebook with cells
+manager.use_notebook("demo", "demo.ipynb", mode="create")
+manager.insert_cell(0, "markdown", "# Header")
+manager.insert_cell(1, "code", "import pandas as pd")
+manager.insert_cell(2, "code", "df = pd.DataFrame()")
+
+# Move a single cell
+manager.move_cell(from_index=1, to_index=0)  # Move imports to top
+
+# Swap two cells
+manager.swap_cells(index1=0, index2=2)
+
+# Reorder all cells at once
+manager.reorder_cells([2, 0, 1])  # Rearrange to [cell2, cell0, cell1]
 ```
 
 ## Testing
