@@ -7,12 +7,13 @@ name = "headlesnb"
 version = "0.1.0"
 description = "A headless notebook server with MCP support based on execnb"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
 dependencies = [
+    "execnb>=0.1.15",
     "fastcore>=1.5.29",
     "ipython>=8.0.0",
     "matplotlib-inline>=0.1.6",
@@ -28,7 +29,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["execnb*", "headlesnb*"]
+include = ["headlesnb*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
