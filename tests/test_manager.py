@@ -5,7 +5,7 @@ import tempfile
 import shutil
 from pathlib import Path
 
-from headlesnb.manager import NotebookManager
+from headlesnb.nb_manager import NotebookManager
 from execnb.nbio import new_nb, write_nb, mk_cell
 
 

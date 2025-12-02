@@ -13,7 +13,7 @@ cd headlesnb
 pip install -e .
 ```
 
-## Basic Usage (Python API)
+## Part 1: NotebookManager - Basic Usage
 
 ### 1. Create and Execute a Notebook
 
@@ -77,7 +77,114 @@ manager.execute_code("import matplotlib.pyplot as plt")
 print(manager.list_notebooks())
 ```
 
-## MCP Server Usage
+---
+
+## Part 2: DialogManager - AI-Assisted Conversations
+
+### 1. Basic Dialog Usage
+
+```python
+from headlesnb import DialogManager
+from headlesnb.dialogmanager.llm import MockLLMClient
+
+# Create manager with mock LLM for testing
+manager = DialogManager(
+    root_path=".",
+    default_llm_client=MockLLMClient(responses=[
+        "This is a helpful response about your code.",
+        "Here's another helpful answer."
+    ])
+)
+
+# Create a new dialog
+manager.use_dialog("chat", "chat.ipynb", mode="create")
+
+# Add different message types
+manager.add_message("# Analysis Session", msg_type='note')
+manager.add_message("import pandas as pd", msg_type='code')
+manager.add_message("What does pandas do?", msg_type='prompt')
+
+# Execute the prompt
+response = manager.execute_prompt()
+print(response.content)  # "This is a helpful response about your code."
+
+# Clean up
+manager.unuse_dialog("chat")
+```
+
+### 2. Message Types Explained
+
+```python
+# Create a dialog
+manager.use_dialog("demo", "demo.ipynb", mode="create")
+
+# NOTE messages - Markdown content for context/documentation
+manager.add_message("# Data Analysis\nThis notebook analyzes sales data.", msg_type='note')
+
+# CODE messages - Executable Python code
+manager.add_message("import pandas as pd\ndf = pd.read_csv('sales.csv')", msg_type='code')
+
+# PROMPT messages - Questions for the LLM
+manager.add_message("Explain the structure of this DataFrame", msg_type='prompt')
+
+# RAW messages - Unprocessed content
+manager.add_message("Some raw content here", msg_type='raw')
+
+# Execute code
+manager.execute_code(code="print('Hello')")
+
+# Execute prompt
+response = manager.execute_prompt()
+```
+
+### 3. Message Attributes
+
+```python
+# Add message with attributes
+msg_id = manager.add_message(
+    content="Important context",
+    msg_type='note',
+    pinned=1,      # Always include in LLM context
+    skipped=0      # Set to 1 to exclude from context
+)
+
+# Update message attributes
+manager.update_message(msg_id, content="Updated content")
+manager.update_message(msg_id, pinned=0)
+
+# Read message
+msg_data = manager.read_message(msg_id=msg_id)
+print(msg_data)
+
+# Delete message
+manager.delete_message(msg_id)
+```
+
+### 4. Context-Aware LLM Calls
+
+```python
+# Create dialog with context
+manager.use_dialog("analysis", "analysis.ipynb", mode="create")
+
+# Add context that will be included in LLM calls
+manager.add_message("import numpy as np", msg_type='code', pinned=1)  # Always included
+manager.add_message("# Helper Functions", msg_type='note')
+manager.add_message("def square(x): return x ** 2", msg_type='code')
+manager.add_message("Old discussion to skip", msg_type='note', skipped=1)  # Excluded
+
+# Add prompt - context is automatically built
+manager.add_message("How can I use the square function with numpy?", msg_type='prompt')
+
+# Execute - prior messages become context for LLM
+response = manager.execute_prompt(
+    system_prompt="You are a helpful Python assistant.",
+    include_context=True  # Default is True
+)
+```
+
+---
+
+## Part 3: MCP Server Usage
 
 ### 1. Start the Server
 
@@ -127,6 +234,8 @@ Execute the first cell
 Show me the contents of the notebook
 ```
 
+---
+
 ## Common Operations
 
 ### File Operations
@@ -140,7 +249,7 @@ print(files)
 files = manager.list_files(limit=10, start_index=0)
 ```
 
-### Cell Operations
+### Cell Operations (NotebookManager)
 
 ```python
 # Insert at specific position
@@ -163,7 +272,8 @@ outputs = manager.read_cell(0, include_outputs=True)
 
 ```python
 # Restart kernel (clears state)
-manager.restart_notebook("my_notebook")
+manager.restart_notebook("my_notebook")  # NotebookManager
+manager.restart_kernel("my_dialog")       # DialogManager
 
 # Stop running execution
 manager.stop_execution()
@@ -197,37 +307,75 @@ print(manager.get_history())
 manager.clear_history()
 ```
 
-## Run Examples
+---
 
-```bash
-# Basic usage example
-cd examples
-python basic_usage.py
+## DialogManager Patterns
 
-# Multiple notebooks example
-python multi_notebook.py
+### Pattern 1: Interactive Analysis Session
 
-# File operations example
-python file_operations.py
+```python
+from headlesnb import DialogManager
+from headlesnb.dialogmanager.llm import MockLLMClient
+
+# Setup
+manager = DialogManager(
+    default_llm_client=MockLLMClient(responses=["Analysis complete!"])
+)
+manager.use_dialog("session", "session.ipynb", mode="create")
+
+# Build analysis incrementally
+manager.add_message("# Sales Analysis", msg_type='note')
+manager.add_message("import pandas as pd", msg_type='code')
+
+# Execute code to load data
+manager.execute_code(code="import pandas as pd")
+
+# Ask LLM about the data
+manager.add_message("What patterns should I look for in sales data?", msg_type='prompt')
+response = manager.execute_prompt()
 ```
 
-## Run Tests
+### Pattern 2: Code Review Dialog
 
-```bash
-# Run all tests
-pytest tests/
+```python
+# Create a dialog for code review
+manager.use_dialog("review", "review.ipynb", mode="create")
 
-# Run with verbose output
-pytest tests/ -v
+# Add code to review
+manager.add_message('''
+def process_data(items):
+    result = []
+    for item in items:
+        if item > 0:
+            result.append(item * 2)
+    return result
+''', msg_type='code')
 
-# Run specific test file
-pytest tests/test_manager.py
-
-# Run with coverage
-pytest tests/ --cov=headlesnb
+# Ask for review
+manager.add_message("Review this code for efficiency and suggest improvements", msg_type='prompt')
+response = manager.execute_prompt()
+print(response.content)
 ```
 
-## Common Patterns
+### Pattern 3: Iterative Problem Solving
+
+```python
+# Create dialog
+manager.use_dialog("problem", "problem.ipynb", mode="create")
+
+# First attempt
+manager.add_message("def factorial(n): return 1 if n <= 1 else n * factorial(n-1)", msg_type='code')
+manager.add_message("Is this implementation efficient for large numbers?", msg_type='prompt')
+response1 = manager.execute_prompt()
+
+# Follow-up based on response
+manager.add_message("Show me an iterative version", msg_type='prompt')
+response2 = manager.execute_prompt()
+```
+
+---
+
+## NotebookManager Patterns
 
 ### Pattern 1: Quick Analysis
 
@@ -289,6 +437,41 @@ for i in [2, 4, 6]:
     manager.execute_cell(i)
 ```
 
+---
+
+## Run Examples
+
+```bash
+# Basic usage example
+cd examples
+python basic_usage.py
+
+# Multiple notebooks example
+python multi_notebook.py
+
+# File operations example
+python file_operations.py
+```
+
+## Run Tests
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run with verbose output
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_manager.py
+pytest tests/test_dialogmanager.py
+
+# Run with coverage
+pytest tests/ --cov=headlesnb
+```
+
+---
+
 ## Troubleshooting
 
 ### Import Errors
@@ -320,10 +503,22 @@ outputs = manager.execute_cell(0, timeout=300)  # 5 minutes
 manager.restart_notebook("my_notebook")
 ```
 
+### Mock LLM for Testing
+
+```python
+# Use MockLLMClient to avoid API calls during development
+from headlesnb.dialogmanager.llm import MockLLMClient
+
+client = MockLLMClient(responses=["Test response 1", "Test response 2"])
+manager = DialogManager(default_llm_client=client)
+```
+
+---
+
 ## Next Steps
 
 - Read the [API Documentation](docs/API.md) for complete reference
-- See [Examples](examples/) for more usage patterns
+- See [DialogManager Guide](docs/DIALOGMANAGER.md) for advanced DialogManager usage
 - Check [MCP Server Guide](docs/MCP_SERVER.md) for AI integration
 - Review [Contributing Guide](CONTRIBUTING.md) to contribute
 
@@ -333,4 +528,4 @@ manager.restart_notebook("my_notebook")
 - Read the [Full Documentation](docs/)
 - Look at [Examples](examples/) for patterns
 
-Happy notebook automation! 🚀
+Happy notebook automation!

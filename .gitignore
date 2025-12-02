@@ -59,3 +59,6 @@ examples/test_files/
 examples/my_notebook.ipynb
 examples/data_prep.ipynb
 examples/analysis.ipynb
+
+# Guidelines (implementation guidelines, not for distribution)
+guidelines/
