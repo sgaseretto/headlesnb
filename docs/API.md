@@ -1,5 +1,13 @@
 # HeadlesNB API Documentation
 
+## Table of Contents
+
+- [NotebookManager](#notebookmanager)
+- [DialogManager](#dialogmanager)
+- [LLM Clients](#llm-clients)
+
+---
+
 ## NotebookManager
 
 The main class for managing notebooks programmatically.
@@ -390,6 +398,60 @@ manager.reorder_cells([2, 3, 4, 1, 0, 5])
 
 ---
 
+## Undo/Redo Operations (NotebookManager)
+
+### undo
+
+Undo the last operation(s) on the active notebook.
+
+```python
+result = manager.undo(steps=1)
+```
+
+**Parameters:**
+- `steps` (int): Number of operations to undo (default: 1)
+
+**Returns:** Success message
+
+---
+
+### redo
+
+Redo previously undone operation(s).
+
+```python
+result = manager.redo(steps=1)
+```
+
+**Parameters:**
+- `steps` (int): Number of operations to redo (default: 1)
+
+**Returns:** Success message
+
+---
+
+### get_history
+
+Get the operation history for the active notebook.
+
+```python
+history = manager.get_history()
+```
+
+**Returns:** Dictionary with undo_stack and redo_stack information
+
+---
+
+### clear_history
+
+Clear the operation history for the active notebook.
+
+```python
+manager.clear_history()
+```
+
+---
+
 ## Additional Tools
 
 ### stop_execution
@@ -428,6 +490,486 @@ name = manager.get_active_notebook()
 ```
 
 **Returns:** Name of active notebook or None
+
+---
+
+## DialogManager
+
+The DialogManager class provides AI-assisted dialog conversations stored as Jupyter notebooks with extended metadata.
+
+### Initialization
+
+```python
+from headlesnb import DialogManager
+from headlesnb.dialogmanager.llm import MockLLMClient
+
+# Create manager with mock LLM for testing
+manager = DialogManager(
+    root_path=".",
+    default_llm_client=MockLLMClient(responses=["Hello!", "Here's my response."])
+)
+```
+
+**Parameters:**
+- `root_path` (str): Root path for file operations (default: ".")
+- `default_llm_client` (LLMClient, optional): Default LLM client for prompts
+
+---
+
+## Dialog Management Tools
+
+### use_dialog
+
+Create or connect to a dialog.
+
+```python
+result = manager.use_dialog(
+    dialog_name="my_dialog",
+    dialog_path="path/to/dialog.ipynb",
+    mode="create",
+    llm_client=None
+)
+```
+
+**Parameters:**
+- `dialog_name` (str): Unique identifier for the dialog
+- `dialog_path` (str): Path to the dialog file
+- `mode` (str): "create" for new, "connect" for existing (default: "connect")
+- `llm_client` (LLMClient, optional): Dialog-specific LLM client
+
+**Returns:** Success message with dialog information
+
+---
+
+### unuse_dialog
+
+Disconnect from a dialog and release resources.
+
+```python
+result = manager.unuse_dialog(dialog_name="my_dialog")
+```
+
+**Parameters:**
+- `dialog_name` (str): Dialog identifier to disconnect
+
+**Returns:** Success message
+
+---
+
+### list_dialogs
+
+List all dialogs currently in use.
+
+```python
+result = manager.list_dialogs()
+```
+
+**Returns:** TSV formatted table with dialog information
+
+---
+
+### set_active_dialog
+
+Set a different dialog as active.
+
+```python
+result = manager.set_active_dialog(dialog_name="my_dialog")
+```
+
+**Parameters:**
+- `dialog_name` (str): Name of dialog to activate
+
+**Returns:** Success message
+
+---
+
+### get_active_dialog
+
+Get the name of the currently active dialog.
+
+```python
+name = manager.get_active_dialog()
+```
+
+**Returns:** Name of active dialog or None
+
+---
+
+### restart_kernel
+
+Restart the kernel for a specific dialog.
+
+```python
+result = manager.restart_kernel(dialog_name="my_dialog")
+```
+
+**Parameters:**
+- `dialog_name` (str): Dialog identifier to restart
+
+**Returns:** Success message
+
+---
+
+## Message Management Tools
+
+### add_message
+
+Add a message to the active dialog.
+
+```python
+msg_id = manager.add_message(
+    content="import pandas as pd",
+    msg_type="code",
+    pinned=0,
+    skipped=0
+)
+```
+
+**Parameters:**
+- `content` (str): Message content
+- `msg_type` (str): "code", "note", "prompt", or "raw" (default: "note")
+- `pinned` (int): 1 to always include in LLM context (default: 0)
+- `skipped` (int): 1 to exclude from LLM context (default: 0)
+
+**Returns:** Message ID (string)
+
+**Message Types:**
+- `code` - Executable Python code
+- `note` - Markdown documentation/context
+- `prompt` - Questions for the LLM
+- `raw` - Unprocessed content
+
+---
+
+### read_message
+
+Read a specific message from the active dialog.
+
+```python
+msg_data = manager.read_message(
+    msg_id="abc123",
+    include_output=True
+)
+```
+
+**Parameters:**
+- `msg_id` (str): Message identifier
+- `include_output` (bool): Include message output (default: True)
+
+**Returns:** Dictionary with message data
+
+---
+
+### update_message
+
+Update a message's content or attributes.
+
+```python
+result = manager.update_message(
+    msg_id="abc123",
+    content="Updated content",
+    pinned=1
+)
+```
+
+**Parameters:**
+- `msg_id` (str): Message identifier
+- `content` (str, optional): New content
+- `pinned` (int, optional): New pinned status
+- `skipped` (int, optional): New skipped status
+- `output` (str, optional): New output
+
+**Returns:** Success message
+
+---
+
+### delete_message
+
+Delete a message from the active dialog.
+
+```python
+result = manager.delete_message(msg_id="abc123")
+```
+
+**Parameters:**
+- `msg_id` (str): Message identifier
+
+**Returns:** Success message
+
+---
+
+### list_messages
+
+List all messages in the active dialog.
+
+```python
+messages = manager.list_messages(
+    include_content=True,
+    include_output=False
+)
+```
+
+**Parameters:**
+- `include_content` (bool): Include message content (default: True)
+- `include_output` (bool): Include message outputs (default: False)
+
+**Returns:** List of message dictionaries
+
+---
+
+### move_message
+
+Move a message to a new position.
+
+```python
+result = manager.move_message(
+    msg_id="abc123",
+    new_index=0
+)
+```
+
+**Parameters:**
+- `msg_id` (str): Message identifier
+- `new_index` (int): Target position (0-based)
+
+**Returns:** Success message
+
+---
+
+### swap_messages
+
+Swap two messages in the dialog.
+
+```python
+result = manager.swap_messages(
+    msg_id1="abc123",
+    msg_id2="def456"
+)
+```
+
+**Parameters:**
+- `msg_id1` (str): First message identifier
+- `msg_id2` (str): Second message identifier
+
+**Returns:** Success message
+
+---
+
+## Execution Tools
+
+### execute_code (DialogManager)
+
+Execute code in the dialog's kernel.
+
+```python
+outputs = manager.execute_code(
+    code="print('Hello')",
+    timeout=30,
+    save_to_dialog=False
+)
+```
+
+**Parameters:**
+- `code` (str): Code to execute
+- `timeout` (int): Execution timeout in seconds (default: 30)
+- `save_to_dialog` (bool): Save as a code message (default: False)
+
+**Returns:** List of execution outputs
+
+---
+
+### execute_prompt
+
+Execute the most recent prompt message with the LLM.
+
+```python
+response = manager.execute_prompt(
+    system_prompt="You are a helpful assistant.",
+    include_context=True,
+    llm_client=None
+)
+```
+
+**Parameters:**
+- `system_prompt` (str): System prompt for the LLM (default: "")
+- `include_context` (bool): Include prior messages as context (default: True)
+- `llm_client` (LLMClient, optional): Override LLM client for this call
+
+**Returns:** LLMResponse object with content, tool_calls, usage, model, stop_reason
+
+---
+
+## Undo/Redo Operations (DialogManager)
+
+### undo
+
+Undo the last operation(s) on the active dialog.
+
+```python
+result = manager.undo(steps=1)
+```
+
+**Parameters:**
+- `steps` (int): Number of operations to undo (default: 1)
+
+**Returns:** Success message
+
+---
+
+### redo
+
+Redo previously undone operation(s).
+
+```python
+result = manager.redo(steps=1)
+```
+
+**Parameters:**
+- `steps` (int): Number of operations to redo (default: 1)
+
+**Returns:** Success message
+
+---
+
+### get_history
+
+Get the operation history for the active dialog.
+
+```python
+history = manager.get_history()
+```
+
+**Returns:** Dictionary with undo_stack and redo_stack information
+
+---
+
+### clear_history
+
+Clear the operation history for the active dialog.
+
+```python
+manager.clear_history()
+```
+
+---
+
+## LLM Clients
+
+HeadlesNB provides an abstract `LLMClient` interface and a `MockLLMClient` for testing.
+
+### LLMClient Interface
+
+```python
+from headlesnb.dialogmanager.llm import LLMClient, LLMResponse
+
+class MyLLMClient(LLMClient):
+    def chat(
+        self,
+        messages: List[Dict[str, Any]],
+        system_prompt: str = "",
+        **kwargs
+    ) -> LLMResponse:
+        # Implement chat functionality
+        pass
+
+    def count_tokens(self, text: str) -> int:
+        # Implement token counting
+        pass
+```
+
+### LLMResponse
+
+```python
+from headlesnb.dialogmanager.llm import LLMResponse
+
+@dataclass
+class LLMResponse:
+    content: str                              # Response text
+    tool_calls: Optional[List[Dict]] = None   # Tool/function calls
+    usage: Optional[Dict[str, int]] = None    # Token usage stats
+    model: Optional[str] = None               # Model used
+    stop_reason: Optional[str] = None         # Why generation stopped
+```
+
+### MockLLMClient
+
+Mock client for testing without API calls.
+
+```python
+from headlesnb.dialogmanager.llm import MockLLMClient, MockLLMResponse
+
+# Simple mock with predefined responses
+client = MockLLMClient(responses=[
+    "First response",
+    "Second response"
+])
+
+# Mock with tool calls
+from headlesnb.dialogmanager.llm import create_mock_for_tool_use
+
+client = create_mock_for_tool_use(
+    tool_name="search",
+    tool_input={"query": "test"},
+    final_response="Found 5 results"
+)
+```
+
+**Parameters:**
+- `responses` (list): List of response strings or MockLLMResponse objects
+- `default_response` (str): Fallback response when responses exhausted
+
+---
+
+### ContextBuilder
+
+Build LLM context windows with token budget management.
+
+```python
+from headlesnb.dialogmanager.llm import ContextBuilder
+
+builder = ContextBuilder(
+    llm_client=client,  # Optional, for token counting
+    max_tokens=200000
+)
+
+messages = builder.build_context(
+    dialog_messages=dialog.messages,
+    current_prompt="What does this code do?",
+    include_outputs=True,
+    system_prompt="You are helpful.",
+    reserved_tokens=4096
+)
+```
+
+**Features:**
+- Pinned messages always included
+- Skipped messages never included
+- Token budget management
+- Maintains message order
+- Proper user/assistant pairing
+
+---
+
+## Message Dataclass
+
+```python
+from headlesnb.dialogmanager import Message
+
+@dataclass
+class Message:
+    content: str = ""
+    msg_type: Optional[str] = "note"  # 'code', 'note', 'prompt', 'raw'
+    output: str = ""
+    time_run: Optional[str] = None
+    is_exported: int = 0
+    skipped: int = 0                  # Exclude from LLM context
+    pinned: int = 0                   # Always include in LLM context
+    i_collapsed: int = 0
+    o_collapsed: int = 0
+    heading_collapsed: int = 0
+    use_thinking: bool = False
+    id: str = field(default_factory=generate_msg_id)
+```
 
 ---
 
@@ -481,3 +1023,5 @@ See the `examples/` directory for complete usage examples:
 - `basic_usage.py` - Basic notebook operations
 - `multi_notebook.py` - Managing multiple notebooks
 - `file_operations.py` - File system operations
+
+See the QUICKSTART.md for DialogManager patterns and examples.

@@ -23,8 +23,29 @@ if not hasattr(CaptureShell, 'restart_kernel'):
         self._stop_execution = False
     CaptureShell.restart_kernel = _restart_kernel_method
 
-from .manager import NotebookManager
+from .nb_manager import NotebookManager
+from .base import BaseManager, ManagedItemInfo
 from .tools import *
 
+# DialogManager imports
+from .dialogmanager import (
+    DialogManager,
+    DialogInfo,
+    Message,
+    generate_msg_id,
+    dialog_to_notebook,
+    notebook_to_dialog,
+)
+
 __version__ = "0.1.0"
-__all__ = ['NotebookManager']
+__all__ = [
+    'NotebookManager',
+    'BaseManager',
+    'ManagedItemInfo',
+    'DialogManager',
+    'DialogInfo',
+    'Message',
+    'generate_msg_id',
+    'dialog_to_notebook',
+    'notebook_to_dialog',
+]
