@@ -1,16 +1,56 @@
 # HeadlesNB API Documentation
 
+This document provides the complete API reference for HeadlesNB. For design rationale and architectural decisions, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Table of Contents
 
+- [API Design Principles](#api-design-principles)
 - [NotebookManager](#notebookmanager)
 - [DialogManager](#dialogmanager)
 - [LLM Clients](#llm-clients)
 
 ---
 
+## API Design Principles
+
+Understanding these principles helps you use the API effectively and anticipate behavior:
+
+### 1. Active Item Pattern
+
+Both NotebookManager and DialogManager use an "active item" pattern:
+- One notebook/dialog is "active" at a time
+- Operations without explicit target use the active item
+- **Why**: Simplifies API for sequential operations, reduces parameter repetition
+
+```python
+manager.set_active_notebook("nb1")
+manager.insert_cell(0, "code", "x = 1")  # Applies to nb1
+```
+
+### 2. String Returns for Status, Dict/List for Data
+
+- Status messages return formatted strings (TSV tables, success messages)
+- Data queries return dicts or lists
+- **Why**: Strings are human-readable for MCP/CLI output; structured data enables programmatic use
+
+### 3. Index-Based vs ID-Based
+
+- **NotebookManager**: Uses integer indices (0-based)
+- **DialogManager**: Uses string IDs (e.g., `_a1b2c3d4`)
+- **Why**: Notebooks are edited sequentially (indices natural); dialogs need stable references (LLM, pinned messages)
+
+### 4. Operation History
+
+Only structure-modifying operations are tracked for undo/redo:
+- Tracked: insert, delete, update, move, swap
+- Not tracked: execute, read, list
+- **Why**: Execution is re-runnable; reads don't change state
+
+---
+
 ## NotebookManager
 
-The main class for managing notebooks programmatically.
+The main class for managing notebooks programmatically. Wraps execnb with multi-notebook support, undo/redo, and MCP compatibility.
 
 ### Initialization
 

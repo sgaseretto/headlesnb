@@ -2,6 +2,27 @@
 
 Thank you for considering contributing to HeadlesNB! This document provides guidelines and instructions for contributing.
 
+## Before You Start
+
+### Understanding the Codebase
+
+Before making changes, please read:
+
+1. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Start here! Explains what each component does, how it works, and **why** it was designed that way.
+2. **[docs/API.md](docs/API.md)** - API reference and design principles
+3. **Tests** in `tests/` - Show expected behavior
+
+### Design Philosophy
+
+HeadlesNB follows these principles:
+
+- **No Jupyter Server**: We use IPython directly for lighter weight
+- **Command Pattern**: All modifications are reversible commands
+- **Separate Concerns**: NotebookManager and DialogManager have different semantics
+- **Compatibility**: .ipynb format for Jupyter interoperability
+
+If your change conflicts with these principles, please discuss in an issue first.
+
 ## Code of Conduct
 
 Be respectful, inclusive, and professional in all interactions.
@@ -119,18 +140,25 @@ def insert_cell(
 
 ### Updating Documentation
 
-- Update API.md for API changes
-- Update MCP_SERVER.md for MCP-related changes
-- Add examples for new features
-- Update README.md if needed
-- Update CHANGELOG.md
+When making changes, update relevant documentation:
+
+| Document | When to Update |
+|----------|----------------|
+| `docs/ARCHITECTURE.md` | Architecture changes, new design decisions |
+| `docs/API.md` | API changes, new methods |
+| `docs/DIALOGMANAGER.md` | DialogManager features |
+| `docs/DIALOGHELPER_SERVER.md` | HTTP server changes |
+| `docs/MCP_SERVER.md` | MCP tool changes |
+| `README.md` | Major features, getting started |
+| `CHANGELOG.md` | Every release |
 
 ### Writing Documentation
 
 - Be clear and concise
 - Include code examples
-- Explain the "why" not just the "what"
+- **Explain the "why" not just the "what"** - This is critical for maintainability
 - Link to related sections
+- Include design trade-offs when relevant
 
 ## Commit Messages
 
