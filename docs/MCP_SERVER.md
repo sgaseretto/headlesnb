@@ -2,6 +2,34 @@
 
 HeadlesNB includes a Model Context Protocol (MCP) server that exposes all notebook management functionality through a standardized interface.
 
+For overall system architecture and design philosophy, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Why MCP?
+
+### The Problem
+
+AI assistants like Claude need a way to interact with notebooks:
+- Direct Python imports don't work across process boundaries
+- Custom HTTP APIs require client implementation for each assistant
+- No standard way for assistants to discover available capabilities
+
+### Our Solution
+
+MCP (Model Context Protocol) provides:
+- **Standardized interface**: Any MCP-compatible assistant can use HeadlesNB
+- **Tool discovery**: Assistants can list available tools and their schemas
+- **Structured I/O**: Well-defined JSON schemas for inputs and outputs
+- **No custom client needed**: Works with Claude Desktop, custom MCP clients, etc.
+
+### Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| All tools return text | MCP results are displayed to users; text is readable |
+| No authentication | MCP is for local assistant use; auth is handled externally |
+| Async implementation | MCP protocol is async; matches server requirements |
+| One manager instance | Shared state enables multi-tool workflows |
+
 ## Running the MCP Server
 
 ### Command Line

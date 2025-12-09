@@ -5,6 +5,36 @@ A headless notebook execution server built on top of `execnb` with Model Context
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Why HeadlesNB?
+
+### The Problem
+
+Traditional Jupyter notebooks require a running Jupyter server, which adds complexity:
+- Heavy dependencies and resource usage
+- Network overhead for local operations
+- Complex multi-user coordination
+- Not designed for programmatic/AI-assisted access
+
+### Our Solution
+
+HeadlesNB uses IPython's `InteractiveShell` directly (via `execnb`), giving you:
+- **Same execution capabilities** as Jupyter without the server
+- **Direct programmatic control** via Python API, MCP, or HTTP
+- **Multiple independent kernels** for parallel notebook execution
+- **Full undo/redo support** using the Command Pattern
+
+### Who Is This For?
+
+| Use Case | Why HeadlesNB? |
+|----------|----------------|
+| AI assistants | MCP protocol support, structured tool interface |
+| Automation scripts | Direct Python API, no server setup |
+| Testing pipelines | Fast, isolated execution environments |
+| Dialog-based AI apps | DialogManager with LLM integration |
+| Notebook preprocessing | Read/modify notebooks without execution overhead |
+
+> **For Architecture & Design Decisions**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed explanations of what each component does, how it works, and why it was designed that way.
+
 ## Features
 
 ### Core Capabilities
@@ -24,6 +54,13 @@ A headless notebook execution server built on top of `execnb` with Model Context
 - **LLM Integration**: Abstract LLM client interface with mock implementation for testing
 - **Context Window Management**: Smart context building with pinned/skipped messages
 - **Serialization**: Full roundtrip between Dialog format and `.ipynb` files
+
+### DialogHelper Server (NEW)
+
+- **FastHTML Backend**: HTTP server compatible with dialoghelper client library
+- **Full API Support**: All dialoghelper endpoints including message CRUD, text editing, SSE
+- **Real-time Updates**: Server-Sent Events (SSE) for HTML OOB swaps
+- **Async Data Exchange**: Blocking data pop with timeout for event-driven patterns
 
 ### Key Advantages
 
@@ -136,6 +173,90 @@ Or integrate with Claude Desktop by adding to your configuration:
 }
 ```
 
+### DialogHelper Server (NEW)
+
+The DialogHelper server is a FastHTML-based HTTP server that provides a backend compatible with the [dialoghelper](https://github.com/AnswerDotAI/dialoghelper) client library. This allows you to use dialoghelper's Python client functions to interact with dialogs over HTTP.
+
+#### Starting the Server
+
+```bash
+# Start with default settings (port 5001, creates demo dialog)
+python -m headlesnb.dialoghelper_server
+
+# Or use the example script with options
+python examples/dialoghelper_server_example.py --port 5001 --root-path ./dialogs
+
+# Without demo dialog
+python examples/dialoghelper_server_example.py --no-demo
+```
+
+#### Using with DialogHelper Client
+
+In a Jupyter notebook or Python script:
+
+```python
+# Required setup variables
+__dialog_name = 'demo'
+__msg_id = '_startup00'
+
+# Import dialoghelper functions
+from dialoghelper.core import (
+    curr_dialog, find_msgs, read_msg, add_msg,
+    update_msg, del_msg, msg_idx, msg_str_replace
+)
+
+# Get current dialog info
+info = curr_dialog()
+print(info)  # {'name': 'demo', 'mode': 'default'}
+
+# Find all messages
+msgs = find_msgs()
+
+# Add a new note
+new_id = add_msg("This is a new note", msg_type='note', placement='at_end')
+
+# Read with line numbers
+result = read_msg(n=0, relative=False, nums=True)
+print(result['msg']['content'])
+
+# Text editing
+msg_str_replace(new_id, old_str='note', new_str='message')
+```
+
+#### Server Endpoints
+
+The server implements all endpoints expected by the dialoghelper client:
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /curr_dialog_` | Get current dialog info |
+| `POST /find_msgs_` | Find messages by pattern/type |
+| `POST /read_msg_` | Read a message |
+| `POST /add_relative_` | Add message relative to another |
+| `POST /update_msg_` | Update message content/attributes |
+| `POST /rm_msg_` | Delete a message |
+| `POST /msg_idx_` | Get message index |
+| `POST /msg_str_replace_` | String replace in message |
+| `POST /msg_insert_line_` | Insert line in message |
+| `POST /msg_replace_lines_` | Replace line range |
+| `POST /add_runq_` | Add to execution queue |
+| `GET /html_stream_` | SSE endpoint for HTML updates |
+
+#### Programmatic Usage
+
+```python
+from headlesnb.dialoghelper_server import app, init_manager, serve
+
+# Initialize with custom root path
+manager = init_manager(root_path="/path/to/dialogs")
+
+# Create a dialog
+manager.use_dialog("my_dialog", "dialog.ipynb", mode="create")
+
+# Start the server
+serve(port=5001, host="0.0.0.0")
+```
+
 ## Available Tools
 
 ### NotebookManager Tools (25 tools)
@@ -197,10 +318,14 @@ Or integrate with Claude Desktop by adding to your configuration:
 
 ## Documentation
 
-- [API Reference](docs/API.md) - Complete API documentation
-- [DialogManager Guide](docs/DIALOGMANAGER.md) - DialogManager documentation
-- [MCP Server Guide](docs/MCP_SERVER.md) - MCP server setup and usage
-- [Examples](examples/) - Complete usage examples
+| Document | Description |
+|----------|-------------|
+| [Architecture Guide](docs/ARCHITECTURE.md) | **Start here for understanding the codebase** - explains what, how, and why for each component |
+| [API Reference](docs/API.md) | Complete API documentation for all tools |
+| [DialogManager Guide](docs/DIALOGMANAGER.md) | Deep dive into AI dialog management |
+| [DialogHelper Server](docs/DIALOGHELPER_SERVER.md) | HTTP server for dialoghelper client |
+| [MCP Server Guide](docs/MCP_SERVER.md) | MCP protocol server setup and usage |
+| [Examples](examples/) | Complete usage examples |
 
 ## Examples
 
@@ -331,67 +456,77 @@ pytest tests/test_dialogmanager.py -v
 
 ```
 headlesnb/
-├── headlesnb/               # Main package
+├── headlesnb/                     # Main package
 │   ├── __init__.py
-│   ├── base.py              # BaseManager and ManagedItemInfo
-│   ├── nb_manager.py        # NotebookManager class
-│   ├── history.py           # Undo/redo for notebooks
-│   ├── tools.py             # MCP tool definitions
-│   ├── mcp_server.py        # MCP server implementation
-│   └── dialogmanager/       # DialogManager package
+│   ├── base.py                    # Abstract base classes (BaseManager, ManagedItemInfo)
+│   │                              # WHY: Shared infrastructure for notebooks & dialogs
+│   ├── nb_manager.py              # NotebookManager - notebook CRUD and execution
+│   │                              # WHY: High-level API wrapping low-level execnb
+│   ├── history.py                 # Command Pattern undo/redo for notebooks
+│   │                              # WHY: Reversible operations require stored commands
+│   ├── tools.py                   # MCP tool schema definitions (JSON Schema)
+│   ├── mcp_server.py              # MCP server implementation
+│   ├── dialoghelper_server.py     # FastHTML HTTP server for dialoghelper client
+│   │                              # WHY: HTTP API enables web UIs and remote access
+│   └── dialogmanager/             # DialogManager package
 │       ├── __init__.py
-│       ├── message.py       # Message dataclass
-│       ├── dialog_info.py   # DialogInfo dataclass
-│       ├── manager.py       # DialogManager class
-│       ├── serialization.py # Dialog <-> Notebook conversion
-│       ├── dialog_history.py # Undo/redo for dialogs
-│       └── llm/             # LLM client implementations
-│           ├── __init__.py
-│           ├── base.py      # LLMClient ABC, LLMResponse
-│           ├── mock.py      # MockLLMClient
-│           └── context.py   # ContextBuilder
-├── tests/                   # Unit tests
-│   ├── test_manager.py
-│   ├── test_dialogmanager.py
-│   ├── test_execnb.py
-│   └── test_tools.py
-├── examples/                # Usage examples
+│       ├── message.py             # Message dataclass with ID, type, pinned/skipped
+│       │                          # WHY: Dialogs need stable IDs (unlike cell indices)
+│       ├── dialog_info.py         # DialogInfo - dialog state container
+│       ├── manager.py             # DialogManager - dialog and LLM operations
+│       ├── serialization.py       # Dialog <-> .ipynb conversion
+│       │                          # WHY: Reuse Jupyter format for interoperability
+│       ├── dialog_history.py      # Command Pattern undo/redo for dialogs
+│       └── llm/                   # LLM client implementations
+│           ├── base.py            # Abstract LLMClient, LLMResponse dataclass
+│           │                      # WHY: Pluggable LLM backends
+│           ├── mock.py            # MockLLMClient for testing without API calls
+│           └── context.py         # ContextBuilder - token-aware context assembly
+│                                  # WHY: LLM context windows are limited
+├── tests/                         # Unit and integration tests
+│   ├── test_manager.py            # NotebookManager tests (103 cases)
+│   ├── test_dialogmanager.py      # DialogManager tests (46 cases)
+│   ├── test_dialoghelper_server.py # HTTP server tests (28 cases)
+│   ├── test_integration_dialoghelper.py # Client compatibility tests (19 cases)
+│   ├── test_execnb.py             # execnb foundation tests
+│   └── test_tools.py              # MCP tool schema tests
+├── examples/                      # Usage examples
 │   ├── basic_usage.py
 │   ├── multi_notebook.py
-│   ├── file_operations.py
-│   ├── cell_reordering.py
-│   └── undo_redo.py
-├── docs/                    # Documentation
-│   ├── API.md
-│   ├── DIALOGMANAGER.md
-│   └── MCP_SERVER.md
-├── pyproject.toml           # Project configuration
+│   ├── dialoghelper_server_example.py  # HTTP server startup script
+│   ├── dialoghelper_client_demo.ipynb  # Client usage notebook
+│   └── ...
+├── docs/                          # Documentation
+│   ├── ARCHITECTURE.md            # Design decisions and rationale (START HERE)
+│   ├── API.md                     # Complete API reference
+│   ├── DIALOGMANAGER.md           # Dialog management deep dive
+│   ├── DIALOGHELPER_SERVER.md     # HTTP server documentation
+│   └── MCP_SERVER.md              # MCP protocol guide
+├── pyproject.toml                 # Project configuration and dependencies
 └── README.md
 ```
 
 ## Architecture
 
-HeadlesNB is built on four main components:
+HeadlesNB is built on five main components. For detailed design rationale, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-1. **execnb**: A lightweight library for executing notebooks without a Jupyter server
-   - Based on IPython's InteractiveShell
-   - Supports magic commands and shell commands
-   - Maintains execution state
+### Component Overview
 
-2. **NotebookManager**: High-level API for notebook manipulation
-   - Manages multiple notebooks simultaneously
-   - Tracks active notebook and kernel state
-   - Provides comprehensive cell operations
+| Component | What It Does | Why This Way |
+|-----------|--------------|--------------|
+| **execnb** | Wraps IPython's InteractiveShell for code execution | Reuses IPython's battle-tested execution engine instead of reimplementing |
+| **NotebookManager** | Manages multiple notebooks with independent kernels | Each notebook needs isolated state; one shell per notebook ensures no variable leakage |
+| **DialogManager** | Manages AI conversations with LLM integration | Dialogs have different semantics than notebooks (message types, pinned/skipped, prompt/response) |
+| **MCP Server** | Exposes functionality via Model Context Protocol | Standard protocol for AI assistant integration |
+| **DialogHelper Server** | HTTP server for dialoghelper client compatibility | Enables web-based UIs and remote access |
 
-3. **DialogManager**: AI conversation manager
-   - Manages dialog sessions with multiple message types
-   - Integrates with LLM clients for prompt execution
-   - Supports context window management
+### Key Design Decisions
 
-4. **MCP Server**: Model Context Protocol server
-   - Exposes all functionality via MCP
-   - Ready for AI assistant integration
-   - Follows MCP protocol specifications
+- **Command Pattern for Undo/Redo**: Each operation is a reversible command. Trade-off: memory for history vs full undo capability.
+- **Notebooks as Persistence Format**: `.ipynb` files are interoperable with Jupyter. Trade-off: JSON overhead vs ecosystem compatibility.
+- **Separate Notebook/Dialog Managers**: Different semantics justify separate implementations sharing common base classes.
+
+> **Deep Dive**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full explanations of what, how, and why.
 
 ## Use Cases
 

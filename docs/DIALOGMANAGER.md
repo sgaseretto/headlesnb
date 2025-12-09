@@ -2,9 +2,12 @@
 
 DialogManager provides AI-assisted dialog conversations stored as Jupyter notebooks with extended metadata. This guide covers the architecture, concepts, and advanced usage patterns.
 
+For overall system architecture and design philosophy, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Table of Contents
 
 - [Overview](#overview)
+- [Why DialogManager?](#why-dialogmanager)
 - [Architecture](#architecture)
 - [Core Concepts](#core-concepts)
 - [Message Types](#message-types)
@@ -12,6 +15,7 @@ DialogManager provides AI-assisted dialog conversations stored as Jupyter notebo
 - [Context Building](#context-building)
 - [Serialization](#serialization)
 - [Undo/Redo System](#undoredo-system)
+- [Design Decisions](#design-decisions)
 - [Advanced Patterns](#advanced-patterns)
 - [Testing](#testing)
 
@@ -30,34 +34,75 @@ Key features:
 
 ---
 
+## Why DialogManager?
+
+### The Problem
+
+NotebookManager is great for notebooks, but AI dialogs have different needs:
+
+| Notebook Need | Dialog Need |
+|---------------|-------------|
+| Cells with code/markdown | Messages with types (code, note, prompt, raw) |
+| Sequential execution | LLM prompt → response flow |
+| Cell outputs | Message outputs + LLM responses |
+| No context management | Token-limited context windows |
+| Index-based references | Stable ID references (for pinned/skipped) |
+
+### Our Solution
+
+A separate manager that:
+- **Shares infrastructure** with NotebookManager (base classes, execnb, history)
+- **Has dialog-specific semantics** (message types, LLM integration, context building)
+- **Stores as .ipynb** for Jupyter compatibility
+
+### Why Not Extend NotebookManager?
+
+Considered but rejected:
+1. **Different abstractions**: "Cell" vs "Message" have different semantics
+2. **Different operations**: `execute_prompt()` vs `execute_cell()`
+3. **Different metadata**: LLM context flags (pinned/skipped) don't make sense for notebooks
+
+Trade-off: Some code duplication, but cleaner separation of concerns.
+
+---
+
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                       DialogManager                              │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────┐ │
-│  │  Dialogs    │  │   Messages   │  │     LLM Integration     │ │
-│  │             │  │              │  │                         │ │
-│  │ - DialogInfo│  │ - Content    │  │ - LLMClient interface   │ │
-│  │ - Path      │  │ - Type       │  │ - MockLLMClient         │ │
-│  │ - Shell     │  │ - Output     │  │ - ContextBuilder        │ │
-│  │ - Messages  │  │ - Metadata   │  │ - Token budgets         │ │
-│  └──────┬──────┘  └──────┬───────┘  └───────────┬─────────────┘ │
-│         │                │                       │               │
-│         └────────────────┴───────────────────────┘               │
-│                          │                                       │
-│                 ┌────────▼────────┐                              │
-│                 │  Serialization  │                              │
-│                 │                 │                              │
-│                 │ Dialog <-> .ipynb                              │
-│                 └────────┬────────┘                              │
-│                          │                                       │
-│                 ┌────────▼────────┐                              │
-│                 │    execnb       │                              │
-│                 │  (CaptureShell) │                              │
-│                 └─────────────────┘                              │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph DM["DialogManager"]
+        direction TB
+
+        subgraph Core["Core Components"]
+            direction LR
+            Dialogs["Dialogs<br/>─────────<br/>• DialogInfo<br/>• Path<br/>• Shell<br/>• Messages list"]
+            Messages["Messages<br/>─────────<br/>• Content<br/>• Type (code/note/prompt/raw)<br/>• Output<br/>• Metadata (pinned, skipped)"]
+            LLMInt["LLM Integration<br/>─────────<br/>• LLMClient interface<br/>• MockLLMClient<br/>• ContextBuilder<br/>• Token budgets"]
+        end
+
+        subgraph Serialization["Serialization Layer"]
+            direction LR
+            D2N["dialog_to_notebook()"]
+            N2D["notebook_to_dialog()"]
+            Sep["Prompt Separator Pattern<br/>(stores prompt + response)"]
+        end
+
+        subgraph Execution["Execution Engine"]
+            CS["execnb CaptureShell<br/>─────────<br/>• IPython wrapper<br/>• Code execution<br/>• Output capture"]
+        end
+    end
+
+    Dialogs --> D2N
+    Messages --> D2N
+    D2N --> IPYNB[(".ipynb files")]
+    IPYNB --> N2D
+    N2D --> Messages
+
+    LLMInt --> Dialogs
+    Messages --> LLMInt
+
+    Dialogs --> CS
+    CS --> Messages
 ```
 
 ### Components
@@ -646,6 +691,75 @@ def test_roundtrip():
 
 ---
 
+## Design Decisions
+
+This section explains key design choices. For overall architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+### Decision 1: Message IDs Instead of Indices
+
+**Chosen**: Messages have stable string IDs (e.g., `_a1b2c3d4`)
+
+**Why**:
+- LLM responses reference messages; indices shift when messages are inserted/deleted
+- Pinned/skipped status needs stable references
+- Context builder needs to track which messages are included
+
+**Trade-off**: Slightly more complex lookups (`get_message_by_id()` vs array access)
+
+### Decision 2: Prompt/Response in Single Message
+
+**Chosen**: Prompt message stores both content and output (LLM response)
+
+**Why**:
+- Keeps prompt and response together
+- Enables re-running prompts
+- Matches notebook cell model (input + output)
+
+**Alternative**: Separate prompt and response messages. Rejected because it complicates context building.
+
+### Decision 3: Abstract LLMClient
+
+**Chosen**: `LLMClient` is an abstract base class with `MockLLMClient` for testing
+
+**Why**:
+- No vendor lock-in (Claude, OpenAI, local models all work)
+- Testing without API calls or costs
+- Clear interface for new implementations
+
+**Trade-off**: Users must implement or choose an LLMClient
+
+### Decision 4: Context Building Strategy
+
+**Chosen**: Newest messages first, respect pinned/skipped, stay within token budget
+
+**Why**:
+- Recent context usually more relevant
+- Pinned messages guarantee important context
+- Token limits are real constraints
+
+**Alternative**: Oldest first, summarization, etc. Could be added as options.
+
+### Decision 5: Separator Pattern for Serialization
+
+**Chosen**: Prompt cells use special separator to store response inline
+
+```markdown
+What is Python?
+
+##### 🤖Reply🤖<!-- SOLVEIT_SEPARATOR_abc123 -->
+
+Python is a programming language...
+```
+
+**Why**:
+- Single cell for prompt+response (cleaner notebook structure)
+- Human-readable when opened in Jupyter
+- Unique separator prevents collision with content
+
+**Trade-off**: Parsing complexity, but encapsulated in serialization module
+
+---
+
 ## Best Practices
 
 1. **Pin Important Context**: Use `pinned=1` for information that should always be in LLM context.
@@ -666,6 +780,6 @@ def test_roundtrip():
 
 ## See Also
 
+- [Architecture Guide](ARCHITECTURE.md) - System design and rationale
 - [API Reference](API.md) - Complete API documentation
 - [Quick Start](../QUICKSTART.md) - Getting started guide
-- [Implementation Summary](../IMPLEMENTATION_SUMMARY.md) - Architecture details
